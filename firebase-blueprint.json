@@ -1,0 +1,171 @@
+{
+  "entities": {
+    "Patient": {
+      "title": "Patient Registry",
+      "description": "Patient general information and health markers onboarding from forms or manually",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "cpf": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "gender": { "type": "string", "enum": ["Masculino", "Feminino"] },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "objective": { "type": "string" },
+        "clinicalHistory": { "type": "string" },
+        "medications": { "type": "string" },
+        "dietaryRestrictions": { "type": "string" },
+        "registrationDate": { "type": "string" },
+        "source": { "type": "string", "enum": ["Google Forms", "Manual"] }
+      },
+      "required": ["id", "name", "cpf", "email"]
+    },
+    "PhysicalAssessment": {
+      "title": "Physical Assessment",
+      "description": "Anthropometric measurements and physical photos recorded by the coach/personal trainer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "patientId": { "type": "string" },
+        "date": { "type": "string" },
+        "weight": { "type": "number" },
+        "height": { "type": "number" },
+        "imc": { "type": "number" },
+        "age": { "type": "number" },
+        "gender": { "type": "string" },
+        "bodyFat": { "type": "number" },
+        "muscleMass": { "type": "number" },
+        "measurements": {
+          "type": "object",
+          "properties": {
+            "arm": { "type": "number" },
+            "waist": { "type": "number" },
+            "abdomen": { "type": "number" },
+            "hip": { "type": "number" },
+            "thigh": { "type": "number" },
+            "calf": { "type": "number" }
+          }
+        },
+        "photos": {
+          "type": "object",
+          "properties": {
+            "frontUrl": { "type": "string" },
+            "sideUrl": { "type": "string" },
+            "backUrl": { "type": "string" }
+          }
+        }
+      },
+      "required": ["id", "patientId", "date", "weight", "height"]
+    },
+    "Bioimpedance": {
+      "title": "Bioimpedance",
+      "description": "Bioelectrical impedance analysis health results recorded by the clinical nutritionist",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "patientId": { "type": "string" },
+        "date": { "type": "string" },
+        "weight": { "type": "number" },
+        "bodyWater": { "type": "number" },
+        "bodyFat": { "type": "number" },
+        "leanMass": { "type": "number" },
+        "muscleMass": { "type": "number" },
+        "bmr": { "type": "number" },
+        "visceralFat": { "type": "number" },
+        "imc": { "type": "number" }
+      },
+      "required": ["id", "patientId", "date", "weight", "bodyFat", "muscleMass"]
+    },
+    "FoodPlan": {
+      "title": "Diet Plan",
+      "description": "Personalized meal distribution with caloric specifications for patient's nutritional targets",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "patientId": { "type": "string" },
+        "date": { "type": "string" },
+        "meals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "time": { "type": "string" },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "quantity": { "type": "string" },
+                    "calories": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "patientId", "date", "meals"]
+    },
+    "WorkoutPlan": {
+      "title": "Workout Program",
+      "description": "Exercise routine with A/B/C/D divisions, reps, sets, and load guides",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "patientId": { "type": "string" },
+        "date": { "type": "string" },
+        "divisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "enum": ["A", "B", "C", "D"] },
+              "focus": { "type": "string" },
+              "exercises": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "series": { "type": "number" },
+                    "reps": { "type": "number" },
+                    "load": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "patientId", "date", "divisions"]
+    }
+  },
+  "firestore": {
+    "patients": {
+      "schema": "Patient",
+      "description": "Collection of all patient profile records"
+    },
+    "patients/{patientId}/assessments": {
+      "schema": "PhysicalAssessment",
+      "description": "Subcollection of physical assessments for a patient"
+    },
+    "patients/{patientId}/bioimpedances": {
+      "schema": "Bioimpedance",
+      "description": "Subcollection of clinic bioimpedance details for a patient"
+    },
+    "patients/{patientId}/foodPlans": {
+      "schema": "FoodPlan",
+      "description": "Subcollection of customized meal distributions assigned over time"
+    },
+    "patients/{patientId}/workouts": {
+      "schema": "WorkoutPlan",
+      "description": "Subcollection of training workout routines split A/B/C/D over time"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "NUTRI PERSONAL PRO",
+  "description": "Sistema completo para Nutricionistas, Personal Trainers e Alunos/Pacientes - acompanhamento físico, planos alimentares, treinos, questionários e evolução com fotos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

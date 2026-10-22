@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global catch-all default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Check if the current user is recorded as a clinical professional or admin
+    function isProfessional() {
+      // Allow if the user has a document in the professionals collection
+      return isSignedIn() && exists(/databases/$(database)/documents/professionals/$(request.auth.uid));
+    }
+
+    // Check if user is the patient themselves
+    function isPatientOwner(patientId) {
+      return isSignedIn() && (request.auth.uid == patientId || request.auth.token.email == getPatientEmail(patientId));
+    }
+
+    function getPatientEmail(patientId) {
+      return get(/databases/$(database)/documents/patients/$(patientId)).data.email;
+    }
+
+    // Patients Collection Rules
+    match /patients/{patientId} {
+      allow read: if isSignedIn() && (request.auth.uid == patientId || isProfessional() || request.auth.token.email == resource.data.email);
+      allow create, update: if isSignedIn(); // Let any agent create/import from Forms, or professionals register
+      allow delete: if isProfessional();
+
+      // Physical Assessment Subcollection
+      match /assessments/{assessmentId} {
+        allow read: if isSignedIn() && (isPatientOwner(patientId) || isProfessional());
+        allow write: if isSignedIn() && isProfessional();
+      }
+
+      // Bioimpedance Subcollection
+      match /bioimpedances/{bioId} {
+        allow read: if isSignedIn() && (isPatientOwner(patientId) || isProfessional());
+        allow write: if isSignedIn() && isProfessional();
+      }
+
+      // Food Plan Subcollection
+      match /foodPlans/{planId} {
+        allow read: if isSignedIn() && (isPatientOwner(patientId) || isProfessional());
+        allow write: if isSignedIn() && isProfessional();
+      }
+
+      // Workout Plan Subcollection
+      match /workouts/{workoutId} {
+        allow read: if isSignedIn() && (isPatientOwner(patientId) || isProfessional());
+        allow write: if isSignedIn() && isProfessional();
+      }
+    }
+
+    // Professional Profiles
+    match /professionals/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (request.auth.uid == userId || request.auth.token.email == 'admin@vidafitpro.com');
+    }
+  }
+}
