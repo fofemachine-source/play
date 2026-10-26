@@ -1,0 +1,961 @@
+// =====================================================================
+//  Dr. Douglas Mota · Endocrinologia e Metabologia — Portal clínico
+//  Arquivo único (App.tsx) para Google AI Studio. Só depende de React.
+//  - Cadastro de pacientes feito SOMENTE pelo admin
+//  - Admin cria usuário e senha de acesso do paciente
+//  - Paciente entra e só VISUALIZA a própria ficha (painel completo)
+//  - Banco novo (chave v3) já carregado com os 2 cadastros enviados
+// =====================================================================
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+// ---------------------------------------------------------------------
+// Armazenamento (troque estas 2 funções por Firebase/Supabase se quiser
+// que o paciente acesse de outro aparelho)
+// ---------------------------------------------------------------------
+const DB_KEY = "dm_clinica_v3"; // chave nova = banco zerado
+
+// >>> MODO TESTE: digite aqui o usuário e a senha do admin para testar.
+// Se a senha ficar vazia, o sistema pede para criar o admin no primeiro acesso.
+// Apague a senha daqui antes de publicar para os pacientes.
+const TESTE_ADMIN = { usuario: "admin", senha: "" }; // digite a senha entre as aspas
+function loadDB(): any {
+  try {
+    const raw = localStorage.getItem(DB_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { admin: null, patients: seedPatients() };
+}
+function saveDB(db: any) {
+  try {
+    localStorage.setItem(DB_KEY, JSON.stringify(db));
+    return true;
+  } catch (e) {
+    alert("Não foi possível salvar: o armazenamento do navegador está cheio. Remova fotos antigas ou exporte um backup.");
+    return false;
+  }
+}
+
+async function hash(txt: string) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+// ---------------------------------------------------------------------
+// Cadastros iniciais (nomes abreviados — edite em "Dados e acesso")
+// ---------------------------------------------------------------------
+function lab(name: string, value: any, unit: string, min: any, max: any, prev?: any, prevDate?: string, extra: any = {}) {
+  return { id: uid(), name, value, unit, min, max, prev, prevDate, ...extra };
+}
+function seedPatients() {
+  const d = "2026-09-30";
+  const p = "2026-07-24";
+  return [
+    {
+      id: uid(),
+      name: "Paciente A. C. P. S.",
+      username: "",
+      passHash: "",
+      sex: "M",
+      birthDate: "",
+      phone: "",
+      height: 1.86,
+      goal: "Controle Metabólico / Emagrecimento",
+      medication: "",
+      injury: "",
+      restriction: "",
+      notes: "Histórico importado dos relatórios de bioimpedância e exames de 30/09/2026.",
+      createdAt: "2025-05-15",
+      evaluations: [
+        { id: uid(), date: "2025-05-15", weight: 120, fatPct: 42.4, fatKg: 50.9, leanKg: 69.1, muscleKg: 31.1, musclePct: 25.9, visceral: 17, residual: 25.1, note: "Avaliação inicial" },
+        { id: uid(), date: "2026-08-08", weight: 117.1, fatPct: 42.6, fatKg: 49.9, leanKg: 67.2, muscleKg: 29.9, musclePct: 25.5, visceral: 17, residual: 24.5, note: "" },
+        { id: uid(), date: "2026-10-19", weight: 104.5, fatPct: 37.1, fatKg: 38.8, leanKg: 65.7, muscleKg: 29.9, musclePct: 28.6, visceral: 13, residual: 21.8, note: "" },
+      ],
+      meds: [],
+      photos: [],
+      labs: [
+        { id: uid(), date: d, title: "Exames laboratoriais", items: [
+          lab("Glicose em jejum", 81, "mg/dL", 70, 99, 98, p),
+          lab("Colesterol total", 114.4, "mg/dL", null, 200, 190.4, p),
+          lab("HDL", 30.5, "mg/dL", 40, null, 43.2, p),
+          lab("LDL", 61.5, "mg/dL", null, 130, 112.1, p),
+          lab("VLDL", 22, "mg/dL", null, null, 35, p),
+          lab("Triglicerídeos", 111.8, "mg/dL", null, 150, 175.3, p),
+          lab("Creatinina", 1.21, "mg/dL", 0.6, 1.3, 1.12, p),
+          lab("Ureia", 17.7, "mg/dL", 10, 50, 27.4, p),
+          lab("Ácido úrico", 4.1, "mg/dL", 2.4, 6.6, 4.7, p),
+          lab("Ferro sérico", 146.5, "µg/dL", 65, 175, 167.2, p),
+          lab("TGP / ALT", 54.1, "U/L", null, 41, 61.2, p),
+          lab("TGO / AST", 22.9, "U/L", null, 40, 23.3, p),
+          lab("Lipase", 40, "U/L", 13, 60, 34, "2026-07-27"),
+          lab("Amilase", 44.75, "U/L", 25, 125, 40.24, p),
+          lab("Vitamina D (25-OH)", 39.1, "ng/mL", 30, 60, 28.5, "2026-07-25"),
+          lab("TSH", 1.28, "µUI/mL", 0.38, 5.33, 1.25, "2026-07-25"),
+          lab("T4 total", 9.7, "µg/dL", 5.1, 14.1, 7.7, "2026-07-25"),
+          lab("T3 total", 0.93, "ng/mL", 0.7, 2.04, 1.01, "2026-07-25"),
+          lab("Testosterona total", 553.67, "ng/dL", 175, 781, 377, "2026-07-25"),
+          lab("Testosterona livre", 11.182, "ng/dL", 3.4, 24.6),
+          lab("SHBG", 36.2, "nmol/L", 11.2, 78.1),
+          lab("LH", 4.7, "mUI/mL", 1.24, 8.62, 8.39, "2026-07-25"),
+          lab("FSH", 14.77, "mUI/mL", 0.95, 11.95, 19.54, "2026-07-27"),
+          lab("PSA total", 1.15, "ng/mL", null, 2.5),
+          lab("PSA livre / total", 28, "%", 25, null),
+          lab("Hemoglobina", 15.6, "g/dL", 13.5, 17.8),
+          lab("Hematócrito", 48.1, "%", 41, 54),
+          lab("Leucócitos", 6220, "/mm³", 3600, 11000),
+          lab("Plaquetas", 249000, "/mm³", 140000, 400000, 235000, p),
+          lab("INR", 1.0, "", 0.9, 1.1, 1.1, p),
+          lab("CA 125", 17.4, "UI/mL", null, 35, 13.6, "2026-07-27"),
+          lab("HBsAg", "Não reagente", "", null, null, null, undefined, { ok: true }),
+          lab("Anti-HBs", "Reagente (37,32)", "mUI/mL", null, null, null, undefined, { ok: true, info: "Imune" }),
+          lab("HIV 1 e 2", "Não reagente", "", null, null, null, undefined, { ok: true }),
+          lab("VDRL", "Não reagente", "", null, null, null, undefined, { ok: true }),
+          lab("Urina tipo 1", "Sem alterações", "", null, null, null, undefined, { ok: true }),
+        ] },
+      ],
+    },
+    {
+      id: uid(),
+      name: "Paciente R. O. S.",
+      username: "",
+      passHash: "",
+      sex: "F",
+      birthDate: "",
+      phone: "",
+      height: null,
+      goal: "Controle Metabólico / Emagrecimento",
+      medication: "Tirzepatida (Mounjaro) — 5 mg semanal",
+      injury: "",
+      restriction: "",
+      notes: "Acompanhamento semanal de peso.",
+      createdAt: "2026-09-15",
+      evaluations: [
+        { id: uid(), date: "2026-09-15", weight: 75.75, note: "Peso inicial" },
+        { id: uid(), date: "2026-09-22", weight: 73.0, note: "2ª semana" },
+        { id: uid(), date: "2026-09-28", weight: 73.0, note: "3ª semana" },
+        { id: uid(), date: "2026-10-14", weight: 73.0, note: "5ª semana" },
+        { id: uid(), date: "2026-10-21", weight: 73.0, note: "6ª semana" },
+      ],
+      meds: [
+        { id: uid(), date: "2026-09-15", text: "Início do tratamento — 2,5 mg" },
+        { id: uid(), date: "2026-10-05", text: "4ª semana — dose não aplicada" },
+        { id: uid(), date: "2026-10-14", text: "Aumento de dose: 2,5 mg → 5 mg" },
+      ],
+      photos: [],
+      labs: [],
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------
+// Utilidades
+// ---------------------------------------------------------------------
+const num = (v: any) => (v === "" || v === null || v === undefined || isNaN(Number(v)) ? null : Number(v));
+const fmt = (v: any, dec = 1) =>
+  v === null || v === undefined || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: dec });
+const fdate = (iso: string) => (iso ? iso.split("-").reverse().join("/") : "—");
+const short = (iso: string) => (iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(2, 4) : "");
+const today = () => new Date().toISOString().slice(0, 10);
+const initials = (n: string) => n.replace(/Paciente /, "").split(/[\s.]+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join("").toUpperCase();
+function age(b: string) {
+  if (!b) return null;
+  const d = new Date(b), t = new Date();
+  let a = t.getFullYear() - d.getFullYear();
+  if (t.getMonth() < d.getMonth() || (t.getMonth() === d.getMonth() && t.getDate() < d.getDate())) a--;
+  return a;
+}
+function bmiClass(b: number) {
+  if (b < 18.5) return "Abaixo do peso";
+  if (b < 25) return "Peso adequado";
+  if (b < 30) return "Sobrepeso";
+  if (b < 35) return "Obesidade grau 1";
+  if (b < 40) return "Obesidade grau 2";
+  return "Obesidade grau 3";
+}
+function labStatus(i: any) {
+  if (typeof i.value === "string") return i.ok === false ? "alto" : "ok";
+  const v = Number(i.value);
+  if (i.min !== null && i.min !== undefined && v < i.min) return "baixo";
+  if (i.max !== null && i.max !== undefined && v > i.max) return "alto";
+  return "ok";
+}
+function refText(i: any) {
+  const a = i.min !== null && i.min !== undefined, b = i.max !== null && i.max !== undefined;
+  if (a && b) return `${fmt(i.min, 2)} – ${fmt(i.max, 2)}`;
+  if (a) return `> ${fmt(i.min, 2)}`;
+  if (b) return `< ${fmt(i.max, 2)}`;
+  return i.info || "—";
+}
+const sorted = (arr: any[]) => [...(arr || [])].sort((a, b) => a.date.localeCompare(b.date));
+function firstLast(evals: any[], key: string) {
+  const list = sorted(evals).filter((e) => num(e[key]) !== null);
+  if (!list.length) return null;
+  return { first: list[0], last: list[list.length - 1], n: list.length, d: num(list[list.length - 1][key])! - num(list[0][key])! };
+}
+
+function compressImage(file: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onerror = rej;
+    r.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 900, s = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = img.width * s; c.height = img.height * s;
+        c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+        res(c.toDataURL("image/jpeg", 0.78));
+      };
+      img.onerror = rej;
+      img.src = r.result as string;
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+// ---------------------------------------------------------------------
+// Estilos
+// ---------------------------------------------------------------------
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+:root{--bg:#F8F4EC;--card:#FFFFFF;--soft:#F3EDE2;--line:#E7DECF;--ink:#2A2118;--mute:#7A6E60;--gold:#B8892E;--gold2:#D9B45A;--good:#3E7D53;--goodbg:#E6F2E9;--bad:#B4442F;--badbg:#F8E4DE;--warn:#A86C12;--warnbg:#FBEFD9}
+[data-theme=dark]{--bg:#16130F;--card:#1F1B16;--soft:#29241D;--line:#3A3328;--ink:#F2EADC;--mute:#B3A690;--gold:#D9B45A;--gold2:#E8CB7E;--good:#7CC392;--goodbg:#1E3326;--bad:#E58B76;--badbg:#3A221C;--warn:#E7B460;--warnbg:#3A2E18}
+*{box-sizing:border-box}
+.dm{min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Plus Jakarta Sans',system-ui,sans-serif;font-size:14px}
+.serif{font-family:'Cormorant Garamond',Georgia,serif}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 18px 60px}
+.top{display:flex;align-items:center;gap:14px;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+.brand{display:flex;align-items:center;gap:12px}
+.mono{width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#fff;display:grid;place-items:center;font-family:'Cormorant Garamond',serif;font-weight:700;font-size:20px}
+.brand b{font-family:'Cormorant Garamond',serif;font-size:20px;display:block;line-height:1}
+.brand small{color:var(--gold);font-size:10.5px;letter-spacing:.08em;font-weight:600}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 14px;border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
+.btn:hover{border-color:var(--gold)}
+.btn.gold{background:linear-gradient(135deg,var(--gold2),var(--gold));color:#fff;border:none}
+.btn.danger{color:var(--bad);border-color:var(--badbg);background:var(--badbg)}
+.btn.sm{padding:6px 10px;font-size:12px}
+.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.soft{background:var(--soft);border-radius:12px;padding:14px}
+h1,h2,h3{font-family:'Cormorant Garamond',serif;margin:0;font-weight:600}
+h2{font-size:24px}h3{font-size:19px}
+.mute{color:var(--mute)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.kpis{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.kpi span{font-size:12px;color:var(--mute)}
+.kpi strong{display:block;font-family:'Cormorant Garamond',serif;font-size:30px;line-height:1.1;margin-top:4px}
+.chip{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+.chip.good{background:var(--goodbg);color:var(--good)}.chip.bad{background:var(--badbg);color:var(--bad)}.chip.warn{background:var(--warnbg);color:var(--warn)}.chip.neu{background:var(--soft);color:var(--mute)}
+label{display:block;font-size:12px;color:var(--mute);margin-bottom:5px;font-weight:500}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--ink);font:inherit}
+.form{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+table{width:100%;border-collapse:collapse}
+th{font-size:11.5px;color:var(--mute);font-weight:600;text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
+td{padding:9px 8px;border-bottom:1px solid var(--line)}
+.tscroll{overflow-x:auto}
+.tabs{display:flex;gap:4px;background:var(--soft);padding:4px;border-radius:12px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{border:none;background:transparent;padding:8px 14px;border-radius:9px;font:inherit;font-weight:600;color:var(--mute);cursor:pointer}
+.tabs button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.hero{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center}
+.avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid var(--gold2);background:var(--soft);display:grid;place-items:center;font-family:'Cormorant Garamond',serif;font-size:34px;color:var(--gold);font-weight:700}
+.big{font-family:'Cormorant Garamond',serif;font-size:56px;line-height:1;font-weight:700}
+.photos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.photos figure{margin:0;position:relative;border-radius:12px;overflow:hidden;background:var(--soft);aspect-ratio:3/4}
+.photos img{width:100%;height:100%;object-fit:cover}
+.photos figcaption{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.55);color:#fff;font-size:11.5px;padding:3px 8px;border-radius:6px}
+.gallery{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.gallery div{border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--card)}
+.gallery img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block}
+.timeline{border-left:2px solid var(--gold2);margin-left:6px;padding-left:14px;display:grid;gap:10px}
+.timeline div{position:relative}.timeline div:before{content:'';position:absolute;left:-20px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--gold)}
+.plist{display:grid;gap:10px}
+.pitem{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card);cursor:pointer;text-align:left;width:100%;font:inherit;color:inherit}
+.pitem:hover{border-color:var(--gold)}
+.mini{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#fff;display:grid;place-items:center;font-weight:700;font-family:'Cormorant Garamond',serif;font-size:17px;flex:none;overflow:hidden}
+.mini img{width:100%;height:100%;object-fit:cover}
+.login{min-height:100vh;display:grid;place-items:center;padding:20px}
+.login .card{width:100%;max-width:420px;padding:28px}
+.err{color:var(--bad);font-size:13px;margin-top:8px}
+.modal{position:fixed;inset:0;background:rgba(20,15,10,.45);display:grid;place-items:center;z-index:20;padding:16px}
+.modal .card{max-width:760px;width:100%;max-height:92vh;overflow:auto}
+@media(max-width:640px){.hero{grid-template-columns:auto 1fr}.hero .heroW{grid-column:1/-1}.big{font-size:44px}.top{flex-wrap:wrap}}
+@media print{.top,.noprint{display:none!important}.dm{background:#fff}}
+`;
+
+// ---------------------------------------------------------------------
+// Gráfico de linhas em SVG (sem bibliotecas)
+// ---------------------------------------------------------------------
+function LineChart({ series, unit = "", height = 200 }: any) {
+  const all = series.flatMap((s: any) => s.points.map((p: any) => p.y));
+  const labels: string[] = Array.from(new Set(series.flatMap((s: any) => s.points.map((p: any) => p.x)))).sort() as string[];
+  if (!all.length) return <p className="mute">Sem dados suficientes para o gráfico.</p>;
+  const W = 560, H = height, pl = 40, pr = 36, pt = 14, pb = 28;
+  let mn = Math.min(...all), mx = Math.max(...all);
+  const pad = (mx - mn) * 0.15 || mx * 0.05 || 1;
+  mn -= pad; mx += pad;
+  const X = (l: string) => (labels.length === 1 ? (W + pl - pr) / 2 : pl + (labels.indexOf(l) / (labels.length - 1)) * (W - pl - pr));
+  const Y = (v: number) => pt + (1 - (v - mn) / (mx - mn)) * (H - pt - pb);
+  const ticks = [0, 0.5, 1].map((t) => mn + t * (mx - mn));
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={series.map((s: any) => s.name).join(", ")}>
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={pl} x2={W - pr} y1={Y(t)} y2={Y(t)} stroke="var(--line)" />
+            <text x={pl - 6} y={Y(t) + 4} fontSize="10.5" textAnchor="end" fill="var(--mute)">{fmt(t, 1)}</text>
+          </g>
+        ))}
+        {labels.map((l, i) => (labels.length <= 8 || i % Math.ceil(labels.length / 8) === 0 || i === labels.length - 1) && (
+          <text key={l} x={X(l)} y={H - 8} fontSize="10.5" textAnchor="middle" fill="var(--mute)">{short(l)}</text>
+        ))}
+        {series.map((s: any, si: number) => {
+          const pts = s.points.map((p: any) => `${X(p.x)},${Y(p.y)}`).join(" ");
+          return (
+            <g key={si}>
+              <polyline points={pts} fill="none" stroke={s.color} strokeWidth="2.5" strokeLinejoin="round" />
+              {s.points.map((p: any, i: number) => (
+                <g key={i}>
+                  <circle cx={X(p.x)} cy={Y(p.y)} r="4.5" fill="var(--card)" stroke={s.color} strokeWidth="2.5" />
+                  {(i === s.points.length - 1 || i === 0) && (
+                    <text x={X(p.x)} y={Y(p.y) - 9} fontSize="11" fontWeight="600" textAnchor="middle" fill={s.color}>{fmt(p.y, 1)}{unit}</text>
+                  )}
+                </g>
+              ))}
+            </g>
+          );
+        })}
+      </svg>
+      {series.length > 1 && (
+        <div className="row" style={{ gap: 14, fontSize: 12 }}>
+          {series.map((s: any) => (
+            <span key={s.name} className="row" style={{ gap: 6 }}>
+              <i style={{ width: 14, height: 3, background: s.color, display: "inline-block", borderRadius: 2 }} />{s.name}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Painel do paciente (usado pelo admin e pelo próprio paciente)
+// ---------------------------------------------------------------------
+function Delta({ d, unit, goodWhen = "down", dec = 1 }: any) {
+  if (d === null || d === undefined) return <span className="chip neu">sem comparação</span>;
+  if (Math.abs(d) < 0.05) return <span className="chip neu">estável</span>;
+  const good = goodWhen === "down" ? d < 0 : d > 0;
+  const verb = d < 0 ? "Perdeu" : "Ganhou";
+  return <span className={"chip " + (good ? "good" : "bad")}>{verb} {fmt(Math.abs(d), dec)} {unit}</span>;
+}
+
+function Dashboard({ p }: any) {
+  const ev = sorted(p.evaluations);
+  const last = ev[ev.length - 1];
+  const w = firstLast(ev, "weight");
+  const fatKg = firstLast(ev, "fatKg");
+  const fatPct = firstLast(ev, "fatPct");
+  const lean = firstLast(ev, "leanKg");
+  const musc = firstLast(ev, "muscleKg");
+  const visc = firstLast(ev, "visceral");
+  const h = num(p.height);
+  const bmi = h && last?.weight ? last.weight / (h * h) : null;
+  const bmi0 = h && w ? num(w.first.weight)! / (h * h) : null;
+  const photos = sorted(p.photos);
+  const pics = photos.length >= 2 ? [photos[0], photos[photos.length - 1]] : photos;
+  const labs = sorted(p.labs);
+  const lastLab = labs[labs.length - 1];
+  const altered = lastLab ? lastLab.items.filter((i: any) => labStatus(i) !== "ok") : [];
+  const pctLoss = w && w.d < 0 ? (Math.abs(w.d) / w.first.weight) * 100 : null;
+  const a = age(p.birthDate);
+
+  return (
+    <div className="grid" style={{ gap: 16 }}>
+      {/* Cabeçalho */}
+      <div className="card hero">
+        {photos.length ? <img className="avatar" src={photos[photos.length - 1].src} alt="" /> : <div className="avatar">{initials(p.name)}</div>}
+        <div>
+          <h2 style={{ fontSize: 30 }}>{p.name}</h2>
+          <div className="mute" style={{ marginTop: 4 }}>
+            {[p.sex === "F" ? "Feminino" : p.sex === "M" ? "Masculino" : null, a !== null ? a + " anos" : null, h ? fmt(h, 2) + " m" : null].filter(Boolean).join(" | ")}
+          </div>
+          <div className="row" style={{ marginTop: 8 }}>
+            {p.goal && <span className="chip warn">{p.goal}</span>}
+            {p.medication && <span className="chip neu">{p.medication}</span>}
+            <span className="chip neu">Acompanhamento desde {fdate(ev[0]?.date || p.createdAt)}</span>
+          </div>
+        </div>
+        <div className="heroW" style={{ textAlign: "right" }}>
+          <div className="mute" style={{ fontSize: 12 }}>Peso atual</div>
+          <div className="big">{last?.weight ? fmt(last.weight, 2) : "—"}<span style={{ fontSize: 20 }}> kg</span></div>
+          {w && w.n > 1 && <Delta d={w.d} unit="kg" goodWhen={p.goal?.includes("Ganho") || p.goal?.includes("Hipertrofia") ? "up" : "down"} dec={2} />}
+        </div>
+      </div>
+
+      {/* Indicadores */}
+      <div className="kpis">
+        <div className="kpi"><span>Variação de peso</span><strong>{w && w.n > 1 ? (w.d > 0 ? "+" : "") + fmt(w.d, 2) + " kg" : "—"}</strong>{pctLoss !== null && <span className="chip good">−{fmt(pctLoss, 1)}% do peso inicial</span>}</div>
+        <div className="kpi"><span>Massa de gordura</span><strong>{fatKg ? fmt(fatKg.last.fatKg) + " kg" : "—"}</strong>{fatKg && fatKg.n > 1 && <Delta d={fatKg.d} unit="kg" />}</div>
+        <div className="kpi"><span>% de gordura</span><strong>{fatPct ? fmt(fatPct.last.fatPct) + "%" : "—"}</strong>{fatPct && fatPct.n > 1 && <Delta d={fatPct.d} unit="p.p." />}</div>
+        <div className="kpi"><span>Massa muscular</span><strong>{musc ? fmt(musc.last.muscleKg) + " kg" : "—"}</strong>{musc && musc.n > 1 && <Delta d={musc.d} unit="kg" goodWhen="up" />}</div>
+        <div className="kpi"><span>Massa livre de gordura</span><strong>{lean ? fmt(lean.last.leanKg) + " kg" : "—"}</strong>{lean && lean.n > 1 && <Delta d={lean.d} unit="kg" goodWhen="up" />}</div>
+        <div className="kpi"><span>Gordura visceral</span><strong>{visc ? fmt(visc.last.visceral, 0) : "—"}</strong>{visc && visc.n > 1 && <Delta d={visc.d} unit="pts" dec={0} />}</div>
+        <div className="kpi"><span>IMC</span><strong>{bmi ? fmt(bmi) : "—"}</strong>{bmi && <span className={"chip " + (bmi < 25 && bmi >= 18.5 ? "good" : "warn")}>{bmiClass(bmi)}</span>}{bmi0 && bmi && Math.abs(bmi0 - bmi) > 0.05 && <div className="mute" style={{ fontSize: 11.5, marginTop: 4 }}>Inicial: {fmt(bmi0)}</div>}</div>
+      </div>
+
+      {/* Gráficos + fotos */}
+      <div className="grid g2">
+        <div className="card">
+          <h3>Evolução do peso</h3>
+          <p className="mute" style={{ margin: "2px 0 8px" }}>{ev.length} registro(s)</p>
+          <LineChart unit=" kg" series={[{ name: "Peso", color: "var(--gold)", points: ev.filter((e) => num(e.weight) !== null).map((e) => ({ x: e.date, y: num(e.weight) })) }]} />
+        </div>
+        <div className="card">
+          <h3>Composição corporal</h3>
+          <p className="mute" style={{ margin: "2px 0 8px" }}>Gordura x massa magra (kg)</p>
+          <LineChart unit="" series={[
+            { name: "Massa de gordura", color: "var(--bad)", points: ev.filter((e) => num(e.fatKg) !== null).map((e) => ({ x: e.date, y: num(e.fatKg) })) },
+            { name: "Massa livre de gordura", color: "var(--good)", points: ev.filter((e) => num(e.leanKg) !== null).map((e) => ({ x: e.date, y: num(e.leanKg) })) },
+            { name: "Massa muscular", color: "var(--gold)", points: ev.filter((e) => num(e.muscleKg) !== null).map((e) => ({ x: e.date, y: num(e.muscleKg) })) },
+          ].filter((s) => s.points.length)} />
+        </div>
+      </div>
+
+      <div className="grid g2">
+        <div className="card">
+          <h3>Fotos de evolução</h3>
+          {pics.length ? (
+            <div className="photos" style={{ marginTop: 10, gridTemplateColumns: pics.length === 1 ? "1fr" : "1fr 1fr" }}>
+              {pics.map((ph: any, i: number) => (
+                <figure key={ph.id}><img src={ph.src} alt={ph.label || "Foto"} /><figcaption>{pics.length > 1 ? (i === 0 ? "Antes" : "Agora") + " · " : ""}{fdate(ph.date)}</figcaption></figure>
+              ))}
+            </div>
+          ) : <p className="mute">Nenhuma foto registrada ainda.</p>}
+        </div>
+        <div className="card">
+          <h3>Exames laboratoriais</h3>
+          {lastLab ? (
+            <>
+              <p className="mute" style={{ margin: "2px 0 10px" }}>Coleta de {fdate(lastLab.date)} · {lastLab.items.length} itens · {altered.length ? altered.length + " fora da referência" : "todos dentro da referência"}</p>
+              {altered.length > 0 && (
+                <div className="grid" style={{ gap: 8, marginBottom: 10 }}>
+                  {altered.map((i: any) => (
+                    <div key={i.id} className="soft row" style={{ justifyContent: "space-between", padding: 10 }}>
+                      <b>{i.name}</b>
+                      <span>{fmt(i.value, 2)} {i.unit} <span className={"chip " + (labStatus(i) === "alto" ? "bad" : "warn")}>{labStatus(i)}</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <LabTable items={lastLab.items} compact />
+            </>
+          ) : <p className="mute">Nenhum exame registrado.</p>}
+        </div>
+      </div>
+
+      <div className="grid g2">
+        <div className="card">
+          <h3>Histórico de avaliações</h3>
+          <div className="tscroll" style={{ marginTop: 8 }}>
+            <table>
+              <thead><tr><th>Data</th><th>Peso</th><th>% Gord.</th><th>Gord. kg</th><th>Músc. kg</th><th>Visceral</th><th>Obs.</th></tr></thead>
+              <tbody>
+                {[...ev].reverse().map((e: any) => (
+                  <tr key={e.id}><td>{fdate(e.date)}</td><td>{fmt(e.weight, 2)}</td><td>{fmt(e.fatPct)}</td><td>{fmt(e.fatKg)}</td><td>{fmt(e.muscleKg)}</td><td>{fmt(e.visceral, 0)}</td><td className="mute">{e.note || ""}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="card">
+          <h3>Tratamento e observações</h3>
+          {p.meds?.length ? (
+            <div className="timeline" style={{ marginTop: 12 }}>
+              {sorted(p.meds).map((m: any) => (<div key={m.id}><b>{fdate(m.date)}</b><div className="mute">{m.text}</div></div>))}
+            </div>
+          ) : <p className="mute">Sem registros de medicação.</p>}
+          {(p.restriction || p.injury || p.notes) && (
+            <div className="soft" style={{ marginTop: 14 }}>
+              {p.restriction && <div><b>Restrição alimentar:</b> {p.restriction}</div>}
+              {p.injury && <div><b>Lesão/limitação:</b> {p.injury}</div>}
+              {p.notes && <div className="mute" style={{ marginTop: 4 }}>{p.notes}</div>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LabTable({ items, compact, onRemove }: any) {
+  const [open, setOpen] = useState(!compact);
+  const show = open ? items : [];
+  return (
+    <div>
+      {compact && <button className="btn sm noprint" onClick={() => setOpen(!open)}>{open ? "Ocultar lista completa" : "Ver todos os exames"}</button>}
+      {show.length > 0 && (
+        <div className="tscroll" style={{ marginTop: 8 }}>
+          <table>
+            <thead><tr><th>Exame</th><th>Resultado</th><th>Referência</th><th>Anterior</th><th></th>{onRemove && <th></th>}</tr></thead>
+            <tbody>
+              {show.map((i: any) => {
+                const st = labStatus(i);
+                const isNum = typeof i.value !== "string";
+                const tr = isNum && num(i.prev) !== null ? Number(i.value) - Number(i.prev) : null;
+                return (
+                  <tr key={i.id}>
+                    <td>{i.name}</td>
+                    <td><b>{isNum ? fmt(i.value, 2) : i.value}</b> <span className="mute">{i.unit}</span></td>
+                    <td className="mute">{refText(i)}</td>
+                    <td className="mute">{num(i.prev) !== null ? <>{fmt(i.prev, 2)} {tr !== null && (tr > 0 ? "↑" : tr < 0 ? "↓" : "=")}</> : "—"}</td>
+                    <td><span className={"chip " + (st === "ok" ? "good" : st === "alto" ? "bad" : "warn")}>{st === "ok" ? "normal" : st}</span></td>
+                    {onRemove && <td><button className="btn sm" onClick={() => onRemove(i.id)}>Remover</button></td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Login / primeiro acesso
+// ---------------------------------------------------------------------
+function Login({ db, setDB, onLogin }: any) {
+  const [u, setU] = useState(""), [s, setS] = useState(""), [s2, setS2] = useState(""), [err, setErr] = useState("");
+  const setup = !db.admin;
+  async function submit(e: any) {
+    e.preventDefault(); setErr("");
+    const user = u.trim().toLowerCase();
+    if (setup) {
+      if (user.length < 3 || s.length < 6) return setErr("Use um usuário com 3+ caracteres e senha com 6+ caracteres.");
+      if (s !== s2) return setErr("As senhas não conferem.");
+      const ndb = { ...db, admin: { username: user, passHash: await hash(s) } };
+      setDB(ndb); onLogin({ role: "admin" }); return;
+    }
+    const h = await hash(s);
+    if (db.admin.username === user && db.admin.passHash === h) return onLogin({ role: "admin" });
+    const p = db.patients.find((x: any) => x.username && x.username === user && x.passHash === h);
+    if (p) return onLogin({ role: "patient", id: p.id });
+    setErr("Usuário ou senha incorretos. Se você é paciente, peça seu acesso à clínica.");
+  }
+  return (
+    <div className="login">
+      <form className="card" onSubmit={submit}>
+        <div className="brand" style={{ justifyContent: "center", marginBottom: 6 }}>
+          <div className="mono" style={{ width: 54, height: 54, fontSize: 26 }}>DM</div>
+          <div><b style={{ fontSize: 26 }}>Dr. Douglas Mota</b><small>ENDOCRINOLOGIA E METABOLOGIA</small></div>
+        </div>
+        <p className="mute" style={{ textAlign: "center", margin: "14px 0 18px" }}>
+          {setup ? "Primeiro acesso: crie o usuário e a senha do administrador." : "Entre com o usuário e a senha fornecidos pela clínica."}
+        </p>
+        <div className="grid" style={{ gap: 12 }}>
+          <div><label>Usuário</label><input value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" /></div>
+          <div><label>Senha</label><input type="password" value={s} onChange={(e) => setS(e.target.value)} autoComplete={setup ? "new-password" : "current-password"} /></div>
+          {setup && <div><label>Confirmar senha</label><input type="password" value={s2} onChange={(e) => setS2(e.target.value)} autoComplete="new-password" /></div>}
+        </div>
+        {err && <div className="err">{err}</div>}
+        <button className="btn gold" style={{ width: "100%", marginTop: 18, padding: 12 }}>{setup ? "Criar administrador" : "Entrar no portal"}</button>
+      </form>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Formulário de paciente (somente admin)
+// ---------------------------------------------------------------------
+function PatientForm({ initial, db, onSave, onClose }: any) {
+  const blank = { name: "", sex: "F", birthDate: "", phone: "", height: "", goal: "Controle Metabólico / Emagrecimento", medication: "", injury: "", restriction: "", notes: "", username: "" };
+  const [f, setF] = useState<any>({ ...blank, ...(initial || {}), height: initial?.height ?? "" });
+  const [pass, setPass] = useState(""), [err, setErr] = useState("");
+  const [w0, setW0] = useState("");
+  const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
+  async function save() {
+    setErr("");
+    if (!f.name.trim()) return setErr("Informe o nome do paciente.");
+    const user = (f.username || "").trim().toLowerCase();
+    if (user) {
+      if (user === db.admin.username || db.patients.some((p: any) => p.username === user && p.id !== initial?.id)) return setErr("Este usuário já está em uso.");
+      if (!initial?.passHash && pass.length < 6) return setErr("Defina uma senha de acesso com pelo menos 6 caracteres.");
+    }
+    if (pass && pass.length < 6) return setErr("A senha precisa ter pelo menos 6 caracteres.");
+    const out: any = { ...(initial || { id: uid(), createdAt: today(), evaluations: [], meds: [], photos: [], labs: [], passHash: "" }), ...f, username: user, height: num(String(f.height).replace(",", ".")) };
+    if (pass) out.passHash = await hash(pass);
+    if (!user) out.passHash = "";
+    if (!initial && num(w0.replace(",", ".")) !== null) out.evaluations = [{ id: uid(), date: today(), weight: num(w0.replace(",", ".")), note: "Peso inicial" }];
+    onSave(out);
+  }
+  return (
+    <div className="modal" role="dialog" aria-modal="true">
+      <div className="card">
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
+          <h2>{initial ? "Dados e acesso" : "Cadastrar paciente"}</h2>
+          <button className="btn sm" onClick={onClose}>Fechar</button>
+        </div>
+        <h3 style={{ marginBottom: 8 }}>Identificação</h3>
+        <div className="form">
+          <div style={{ gridColumn: "1/-1" }}><label>Nome completo *</label><input value={f.name} onChange={set("name")} /></div>
+          <div><label>Sexo biológico</label><select value={f.sex} onChange={set("sex")}><option value="F">Feminino</option><option value="M">Masculino</option></select></div>
+          <div><label>Data de nascimento</label><input type="date" value={f.birthDate} onChange={set("birthDate")} /></div>
+          <div><label>WhatsApp</label><input value={f.phone} onChange={set("phone")} placeholder="(00) 00000-0000" /></div>
+          <div><label>Altura (m)</label><input value={f.height ?? ""} onChange={set("height")} placeholder="1,65" /></div>
+          {!initial && <div><label>Peso inicial (kg)</label><input value={w0} onChange={(e) => setW0(e.target.value)} placeholder="70,5" /></div>}
+          <div><label>Objetivo</label>
+            <select value={f.goal} onChange={set("goal")}>
+              <option>Controle Metabólico / Emagrecimento</option><option>Hipertrofia e Ganho de Massa</option><option>Reposição Hormonal</option><option>Tireoide</option><option>Diabetes</option><option>Outro</option>
+            </select>
+          </div>
+        </div>
+        <h3 style={{ margin: "18px 0 8px" }}>Anamnese</h3>
+        <div className="form">
+          <div><label>Medicamento contínuo</label><input value={f.medication} onChange={set("medication")} /></div>
+          <div><label>Lesão ou limitação</label><input value={f.injury} onChange={set("injury")} /></div>
+          <div><label>Restrição alimentar</label><input value={f.restriction} onChange={set("restriction")} /></div>
+          <div style={{ gridColumn: "1/-1" }}><label>Observações</label><textarea rows={2} value={f.notes} onChange={set("notes")} /></div>
+        </div>
+        <h3 style={{ margin: "18px 0 4px" }}>Acesso do paciente ao portal</h3>
+        <p className="mute" style={{ margin: "0 0 8px", fontSize: 12.5 }}>O paciente só consegue visualizar a própria ficha. Deixe o usuário em branco para não liberar acesso.</p>
+        <div className="form">
+          <div><label>Usuário</label><input value={f.username} onChange={set("username")} autoComplete="off" /></div>
+          <div><label>{initial?.passHash ? "Nova senha (deixe vazio para manter)" : "Senha"}</label><input type="text" value={pass} onChange={(e) => setPass(e.target.value)} autoComplete="new-password" /></div>
+        </div>
+        {err && <div className="err">{err}</div>}
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 18 }}>
+          <button className="btn" onClick={onClose}>Cancelar</button>
+          <button className="btn gold" onClick={save}>{initial ? "Salvar alterações" : "Cadastrar paciente"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Ficha do paciente (admin): painel + abas de edição
+// ---------------------------------------------------------------------
+function PatientAdmin({ p, db, update, remove, back }: any) {
+  const [tab, setTab] = useState("painel");
+  const [edit, setEdit] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [ev, setEv] = useState<any>({ date: today(), weight: "", fatPct: "", fatKg: "", muscleKg: "", visceral: "", water: "", bmr: "", metabolicAge: "", note: "" });
+  const [lb, setLb] = useState<any>({ date: today(), name: "", value: "", unit: "", min: "", max: "" });
+  const [md, setMd] = useState<any>({ date: today(), text: "" });
+  const [phDate, setPhDate] = useState(today());
+
+  const patch = (changes: any) => update({ ...p, ...changes });
+
+  function addEval() {
+    const w = num(String(ev.weight).replace(",", "."));
+    if (w === null) return alert("Informe o peso.");
+    const fp = num(String(ev.fatPct).replace(",", "."));
+    let fk = num(String(ev.fatKg).replace(",", "."));
+    if (fk === null && fp !== null) fk = +(w * fp / 100).toFixed(1);
+    const e: any = { id: uid(), date: ev.date, weight: w, fatPct: fp, fatKg: fk, leanKg: fk !== null ? +(w - fk).toFixed(1) : null,
+      muscleKg: num(String(ev.muscleKg).replace(",", ".")), visceral: num(ev.visceral), water: num(String(ev.water).replace(",", ".")),
+      bmr: num(ev.bmr), metabolicAge: num(ev.metabolicAge), note: ev.note };
+    patch({ evaluations: [...p.evaluations, e] });
+    setEv({ ...ev, weight: "", fatPct: "", fatKg: "", muscleKg: "", visceral: "", water: "", bmr: "", metabolicAge: "", note: "" });
+  }
+  function addLab() {
+    if (!lb.name || lb.value === "") return alert("Informe o exame e o resultado.");
+    const v = num(String(lb.value).replace(",", "."));
+    const labs = [...p.labs];
+    let g = labs.find((x: any) => x.date === lb.date);
+    const prevGroup = sorted(labs).reverse().find((x: any) => x.date < lb.date && x.items.some((i: any) => i.name.toLowerCase() === lb.name.toLowerCase()));
+    const prevItem = prevGroup?.items.find((i: any) => i.name.toLowerCase() === lb.name.toLowerCase());
+    const item = { id: uid(), name: lb.name, value: v === null ? lb.value : v, unit: lb.unit, min: num(String(lb.min).replace(",", ".")), max: num(String(lb.max).replace(",", ".")), prev: prevItem && typeof prevItem.value !== "string" ? prevItem.value : null, prevDate: prevGroup?.date };
+    if (g) g = { ...g, items: [...g.items, item] }; else g = { id: uid(), date: lb.date, title: "Exames laboratoriais", items: [item] };
+    patch({ labs: [...labs.filter((x: any) => x.date !== lb.date), g] });
+    setLb({ ...lb, name: "", value: "", unit: "", min: "", max: "" });
+  }
+  async function addPhotos(files: FileList | null) {
+    if (!files) return;
+    const list = [...p.photos];
+    for (const f of Array.from(files)) list.push({ id: uid(), date: phDate, label: "", src: await compressImage(f) });
+    patch({ photos: list });
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  const tabs = [["painel", "Painel completo"], ["avaliacoes", "Avaliações"], ["exames", "Exames"], ["fotos", "Fotos"], ["tratamento", "Tratamento"]];
+  return (
+    <div>
+      <div className="row noprint" style={{ justifyContent: "space-between", marginBottom: 14 }}>
+        <button className="btn" onClick={back}>← Pacientes</button>
+        <div className="row">
+          <span className={"chip " + (p.username ? "good" : "neu")}>{p.username ? "Acesso liberado: " + p.username : "Sem acesso ao portal"}</span>
+          <button className="btn" onClick={() => setEdit(true)}>Dados e acesso</button>
+          <button className="btn" onClick={() => window.print()}>Imprimir</button>
+          <button className="btn danger" onClick={() => confirm(`Excluir ${p.name} e todo o histórico?`) && remove(p.id)}>Excluir</button>
+        </div>
+      </div>
+      <div className="tabs noprint">{tabs.map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}</div>
+
+      {tab === "painel" && <Dashboard p={p} />}
+
+      {tab === "avaliacoes" && (
+        <div className="grid" style={{ gap: 14 }}>
+          <div className="card">
+            <h3 style={{ marginBottom: 10 }}>Registrar avaliação / bioimpedância</h3>
+            <div className="form">
+              <div><label>Data</label><input type="date" value={ev.date} onChange={(e) => setEv({ ...ev, date: e.target.value })} /></div>
+              {[["weight", "Peso (kg) *"], ["fatPct", "Gordura (%)"], ["fatKg", "Gordura (kg)"], ["muscleKg", "Massa muscular (kg)"], ["visceral", "Gordura visceral"], ["water", "Água corporal (%)"], ["bmr", "Metab. basal (kcal)"], ["metabolicAge", "Idade metabólica"]].map(([k, l]) => (
+                <div key={k}><label>{l}</label><input inputMode="decimal" value={ev[k]} onChange={(e) => setEv({ ...ev, [k]: e.target.value })} /></div>
+              ))}
+              <div style={{ gridColumn: "1/-1" }}><label>Observação</label><input value={ev.note} onChange={(e) => setEv({ ...ev, note: e.target.value })} /></div>
+            </div>
+            <p className="mute" style={{ fontSize: 12 }}>Se informar só o % de gordura, a massa de gordura e a massa magra são calculadas automaticamente.</p>
+            <button className="btn gold" onClick={addEval}>Salvar avaliação</button>
+          </div>
+          <div className="card tscroll">
+            <table>
+              <thead><tr><th>Data</th><th>Peso</th><th>% Gord.</th><th>Gord. kg</th><th>Magra kg</th><th>Músc. kg</th><th>Visceral</th><th>Água</th><th>TMB</th><th>Obs.</th><th></th></tr></thead>
+              <tbody>
+                {sorted(p.evaluations).reverse().map((e: any) => (
+                  <tr key={e.id}><td>{fdate(e.date)}</td><td>{fmt(e.weight, 2)}</td><td>{fmt(e.fatPct)}</td><td>{fmt(e.fatKg)}</td><td>{fmt(e.leanKg)}</td><td>{fmt(e.muscleKg)}</td><td>{fmt(e.visceral, 0)}</td><td>{fmt(e.water)}</td><td>{fmt(e.bmr, 0)}</td><td className="mute">{e.note}</td>
+                    <td><button className="btn sm" onClick={() => patch({ evaluations: p.evaluations.filter((x: any) => x.id !== e.id) })}>Remover</button></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === "exames" && (
+        <div className="grid" style={{ gap: 14 }}>
+          <div className="card">
+            <h3 style={{ marginBottom: 10 }}>Adicionar resultado de exame</h3>
+            <div className="form">
+              <div><label>Data da coleta</label><input type="date" value={lb.date} onChange={(e) => setLb({ ...lb, date: e.target.value })} /></div>
+              <div><label>Exame</label><input value={lb.name} onChange={(e) => setLb({ ...lb, name: e.target.value })} placeholder="Ex.: HDL" /></div>
+              <div><label>Resultado</label><input value={lb.value} onChange={(e) => setLb({ ...lb, value: e.target.value })} placeholder="Ex.: 45" /></div>
+              <div><label>Unidade</label><input value={lb.unit} onChange={(e) => setLb({ ...lb, unit: e.target.value })} placeholder="mg/dL" /></div>
+              <div><label>Referência mínima</label><input value={lb.min} onChange={(e) => setLb({ ...lb, min: e.target.value })} /></div>
+              <div><label>Referência máxima</label><input value={lb.max} onChange={(e) => setLb({ ...lb, max: e.target.value })} /></div>
+            </div>
+            <button className="btn gold" style={{ marginTop: 12 }} onClick={addLab}>Salvar exame</button>
+          </div>
+          {sorted(p.labs).reverse().map((g: any) => (
+            <div key={g.id} className="card">
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <h3>Coleta de {fdate(g.date)}</h3>
+                <button className="btn sm danger" onClick={() => confirm("Excluir esta coleta inteira?") && patch({ labs: p.labs.filter((x: any) => x.id !== g.id) })}>Excluir coleta</button>
+              </div>
+              <LabTable items={g.items} onRemove={(id: string) => patch({ labs: p.labs.map((x: any) => x.id === g.id ? { ...x, items: x.items.filter((i: any) => i.id !== id) } : x) })} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "fotos" && (
+        <div className="card">
+          <h3 style={{ marginBottom: 10 }}>Fotos de postura e composição</h3>
+          <div className="row" style={{ marginBottom: 14 }}>
+            <div style={{ width: 180 }}><label>Data das fotos</label><input type="date" value={phDate} onChange={(e) => setPhDate(e.target.value)} /></div>
+            <div><label>&nbsp;</label><input ref={fileRef} type="file" accept="image/*" multiple onChange={(e) => addPhotos(e.target.files)} style={{ background: "transparent", border: "none", padding: 0 }} /></div>
+          </div>
+          <p className="mute" style={{ fontSize: 12 }}>As fotos são reduzidas automaticamente. A primeira e a mais recente aparecem no painel como “Antes” e “Agora”.</p>
+          {p.photos.length ? (
+            <div className="gallery">
+              {sorted(p.photos).map((ph: any) => (
+                <div key={ph.id}><img src={ph.src} alt="" />
+                  <div className="row" style={{ justifyContent: "space-between", padding: 8 }}><span style={{ fontSize: 12 }}>{fdate(ph.date)}</span>
+                    <button className="btn sm" onClick={() => patch({ photos: p.photos.filter((x: any) => x.id !== ph.id) })}>Remover</button></div>
+                </div>
+              ))}
+            </div>
+          ) : <p className="mute">Nenhuma foto enviada.</p>}
+        </div>
+      )}
+
+      {tab === "tratamento" && (
+        <div className="card">
+          <h3 style={{ marginBottom: 10 }}>Registro de medicação e condutas</h3>
+          <div className="form">
+            <div><label>Data</label><input type="date" value={md.date} onChange={(e) => setMd({ ...md, date: e.target.value })} /></div>
+            <div style={{ gridColumn: "span 2" }}><label>Descrição</label><input value={md.text} onChange={(e) => setMd({ ...md, text: e.target.value })} placeholder="Ex.: Aumento de dose para 7,5 mg" /></div>
+          </div>
+          <button className="btn gold" style={{ marginTop: 12 }} onClick={() => { if (!md.text.trim()) return; patch({ meds: [...(p.meds || []), { id: uid(), ...md }] }); setMd({ ...md, text: "" }); }}>Salvar registro</button>
+          <div className="timeline" style={{ marginTop: 18 }}>
+            {sorted(p.meds).reverse().map((m: any) => (
+              <div key={m.id} className="row" style={{ justifyContent: "space-between" }}>
+                <span><b>{fdate(m.date)}</b> <span className="mute">{m.text}</span></span>
+                <button className="btn sm" onClick={() => patch({ meds: p.meds.filter((x: any) => x.id !== m.id) })}>Remover</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {edit && <PatientForm initial={p} db={db} onClose={() => setEdit(false)} onSave={(np: any) => { update(np); setEdit(false); }} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Área do admin
+// ---------------------------------------------------------------------
+function AdminHome({ db, setDB, openPatient }: any) {
+  const [q, setQ] = useState(""), [creating, setCreating] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+  const list = db.patients.filter((p: any) => p.name.toLowerCase().includes(q.toLowerCase()));
+  const totalLoss = db.patients.reduce((acc: number, p: any) => { const w = firstLast(p.evaluations, "weight"); return acc + (w && w.d < 0 ? -w.d : 0); }, 0);
+  const withAccess = db.patients.filter((p: any) => p.username).length;
+
+  function exportJSON() {
+    const blob = new Blob([JSON.stringify(db, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `backup-clinica-${today()}.json`; a.click();
+  }
+  function importJSON(f: File | undefined) {
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { try { const d = JSON.parse(r.result as string); if (!d.patients) throw 0; if (confirm("Substituir todos os dados atuais pelo backup?")) setDB({ ...d, admin: db.admin }); } catch { alert("Arquivo de backup inválido."); } };
+    r.readAsText(f);
+  }
+  function resetDB() {
+    if (!confirm("Zerar o banco? Todos os pacientes atuais serão apagados e os 2 cadastros iniciais serão recarregados.")) return;
+    setDB({ admin: db.admin, patients: seedPatients() });
+  }
+
+  return (
+    <div className="grid" style={{ gap: 16 }}>
+      <div className="kpis">
+        <div className="kpi"><span>Pacientes</span><strong>{db.patients.length}</strong></div>
+        <div className="kpi"><span>Com acesso ao portal</span><strong>{withAccess}</strong></div>
+        <div className="kpi"><span>Peso perdido somado</span><strong>{fmt(totalLoss, 1)} kg</strong></div>
+        <div className="kpi"><span>Avaliações registradas</span><strong>{db.patients.reduce((a: number, p: any) => a + p.evaluations.length, 0)}</strong></div>
+      </div>
+      <div className="card">
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
+          <h2>Pacientes</h2>
+          <div className="row">
+            <input placeholder="Buscar pelo nome" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
+            <button className="btn gold" onClick={() => setCreating(true)}>+ Cadastrar paciente</button>
+          </div>
+        </div>
+        <div className="plist">
+          {list.map((p: any) => {
+            const w = firstLast(p.evaluations, "weight");
+            const ph = sorted(p.photos);
+            return (
+              <button key={p.id} className="pitem" onClick={() => openPatient(p.id)}>
+                <div className="mini">{ph.length ? <img src={ph[ph.length - 1].src} alt="" /> : initials(p.name)}</div>
+                <div style={{ flex: 1 }}>
+                  <b>{p.name}</b>
+                  <div className="mute" style={{ fontSize: 12.5 }}>{p.goal} | {p.evaluations.length} avaliação(ões)</div>
+                </div>
+                {w && w.n > 1 && <Delta d={w.d} unit="kg" dec={2} />}
+                <span className={"chip " + (p.username ? "good" : "neu")}>{p.username ? "Portal ativo" : "Sem acesso"}</span>
+              </button>
+            );
+          })}
+          {!list.length && <p className="mute">Nenhum paciente encontrado. Use “Cadastrar paciente” para começar.</p>}
+        </div>
+      </div>
+      <div className="card row" style={{ justifyContent: "space-between" }}>
+        <div><h3>Dados do sistema</h3><p className="mute" style={{ margin: 0, fontSize: 12.5 }}>Faça backup com frequência: os dados ficam salvos neste navegador.</p></div>
+        <div className="row">
+          <button className="btn" onClick={exportJSON}>Exportar backup</button>
+          <button className="btn" onClick={() => importRef.current?.click()}>Importar backup</button>
+          <input ref={importRef} type="file" accept="application/json" hidden onChange={(e) => importJSON(e.target.files?.[0])} />
+          <button className="btn danger" onClick={resetDB}>Zerar banco</button>
+        </div>
+      </div>
+      {creating && <PatientForm db={db} onClose={() => setCreating(false)} onSave={(np: any) => { setDB({ ...db, patients: [...db.patients, np] }); setCreating(false); openPatient(np.id); }} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// App
+// ---------------------------------------------------------------------
+export default function App() {
+  const [db, setDBState] = useState<any>(loadDB);
+  const [session, setSession] = useState<any>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [theme, setTheme] = useState("light");
+  const [pwd, setPwd] = useState(false);
+
+  useEffect(() => { saveDB(db); }, [db]);
+  useEffect(() => {
+    if (TESTE_ADMIN.senha) {
+      hash(TESTE_ADMIN.senha).then((h) =>
+        setDBState((d: any) => ({ ...d, admin: { username: TESTE_ADMIN.usuario.trim().toLowerCase(), passHash: h } })));
+    }
+  }, []);
+  const setDB = (d: any) => setDBState(d);
+
+  const patient = useMemo(() => {
+    const id = session?.role === "patient" ? session.id : openId;
+    return db.patients.find((p: any) => p.id === id);
+  }, [db, session, openId]);
+
+  const logout = () => { setSession(null); setOpenId(null); };
+  const update = (np: any) => setDB({ ...db, patients: db.patients.map((p: any) => (p.id === np.id ? np : p)) });
+  const remove = (id: string) => { setDB({ ...db, patients: db.patients.filter((p: any) => p.id !== id) }); setOpenId(null); };
+
+  return (
+    <div className="dm" data-theme={theme}>
+      <style>{CSS}</style>
+      {!session ? (
+        <Login db={db} setDB={setDB} onLogin={setSession} />
+      ) : (
+        <>
+          <header className="top">
+            <div className="brand">
+              <div className="mono">DM</div>
+              <div><b>Dr. Douglas Mota</b><small>ENDOCRINOLOGIA E METABOLOGIA</small></div>
+            </div>
+            <div className="row">
+              <span className="mute" style={{ fontSize: 12.5 }}>{session.role === "admin" ? "Administrador" : "Área do paciente"}</span>
+              <button className="btn sm" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label="Alternar tema">◐</button>
+              {session.role === "admin" && <button className="btn sm" onClick={() => setPwd(true)}>Alterar minha senha</button>}
+              <button className="btn sm" onClick={logout}>Sair</button>
+            </div>
+          </header>
+          <main className="wrap">
+            {session.role === "admin" ? (
+              patient ? <PatientAdmin key={patient.id} p={patient} db={db} update={update} remove={remove} back={() => setOpenId(null)} />
+                      : <AdminHome db={db} setDB={setDB} openPatient={setOpenId} />
+            ) : patient ? (
+              <>
+                <p className="mute noprint" style={{ marginTop: 0 }}>Olá! Aqui está a sua evolução. Os dados são atualizados pela equipe do Dr. Douglas Mota.</p>
+                <Dashboard p={patient} />
+              </>
+            ) : <p>Cadastro não encontrado. Fale com a clínica.</p>}
+          </main>
+          {pwd && <AdminPassword db={db} setDB={setDB} close={() => setPwd(false)} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function AdminPassword({ db, setDB, close }: any) {
+  const [a, setA] = useState(""), [b, setB] = useState(""), [c, setC] = useState(""), [err, setErr] = useState("");
+  async function save() {
+    if ((await hash(a)) !== db.admin.passHash) return setErr("Senha atual incorreta.");
+    if (b.length < 6) return setErr("A nova senha precisa ter 6+ caracteres.");
+    if (b !== c) return setErr("As senhas não conferem.");
+    setDB({ ...db, admin: { ...db.admin, passHash: await hash(b) } }); close();
+  }
+  return (
+    <div className="modal"><div className="card" style={{ maxWidth: 420 }}>
+      <h2 style={{ marginBottom: 12 }}>Alterar minha senha</h2>
+      <div className="grid" style={{ gap: 10 }}>
+        <div><label>Senha atual</label><input type="password" value={a} onChange={(e) => setA(e.target.value)} /></div>
+        <div><label>Nova senha</label><input type="password" value={b} onChange={(e) => setB(e.target.value)} /></div>
+        <div><label>Confirmar nova senha</label><input type="password" value={c} onChange={(e) => setC(e.target.value)} /></div>
+      </div>
+      {err && <div className="err">{err}</div>}
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+        <button className="btn" onClick={close}>Cancelar</button><button className="btn gold" onClick={save}>Salvar senha</button>
+      </div>
+    </div></div>
+  );
+}
