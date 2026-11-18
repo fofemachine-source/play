@@ -36,6 +36,12 @@ import {
   Camera,
   Pill,
   Menu,
+  CreditCard,
+  DollarSign,
+  Wallet,
+  Check,
+  Lock,
+  SlidersHorizontal,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------
@@ -382,6 +388,81 @@ function seedAppointments(patients: any[]) {
   return list;
 }
 
+function seedProtocols(pts: any[]): any[] {
+  const p1 = pts.find((p) => p.username === "ros") || pts[0];
+  const p2 = pts.find((p) => p.username === "acps") || pts[1];
+  const list: any[] = [];
+
+  if (p1) {
+    const total = 5400;
+    const installmentsCount = 6;
+    const instVal = 900;
+    const installments = [
+      { number: 1, dueDate: "2026-09-15", value: instVal, status: "Paga", paidAt: "2026-09-15" },
+      { number: 2, dueDate: "2026-10-15", value: instVal, status: "Paga", paidAt: "2026-10-14" },
+      { number: 3, dueDate: "2026-11-15", value: instVal, status: "Pendente", paidAt: null },
+      { number: 4, dueDate: "2026-12-15", value: instVal, status: "Pendente", paidAt: null },
+      { number: 5, dueDate: "2027-01-15", value: instVal, status: "Pendente", paidAt: null },
+      { number: 6, dueDate: "2027-02-15", value: instVal, status: "Pendente", paidAt: null },
+    ];
+    list.push({
+      id: "proto-1",
+      patientId: p1.id,
+      patientName: p1.name,
+      name: "Protocolo Emagrecimento & Controle Metabólico (6 meses)",
+      duration: "6 meses",
+      startDate: "2026-09-15",
+      endDate: "2027-03-15",
+      status: "Ativo",
+      medications: "Tirzepatida (Mounjaro) — 5 mg semanal; Ômega 3 DHA 1000mg; Vitamina D3 50.000 UI/semana",
+      includedItems: "6 consultas médicas + 6 bioimpedâncias tetrapolares + acompanhamento contínuo de exames + suporte direto via WhatsApp",
+      totalValue: total,
+      paymentMethod: "Cartão de Crédito",
+      installmentsCount,
+      installmentValue: instVal,
+      paidInstallments: 2,
+      installments,
+      paymentStatus: "Em dia",
+      visibleInPortal: true,
+      notes: "Paciente com ótima adesão e perda contínua de gordura. Débito automático das parcelas no cartão.",
+    });
+  }
+
+  if (p2) {
+    const total = 3600;
+    const installmentsCount = 3;
+    const instVal = 1200;
+    const installments = [
+      { number: 1, dueDate: "2026-08-08", value: instVal, status: "Paga", paidAt: "2026-08-08" },
+      { number: 2, dueDate: "2026-09-08", value: instVal, status: "Paga", paidAt: "2026-09-08" },
+      { number: 3, dueDate: "2026-10-08", value: instVal, status: "Paga", paidAt: "2026-10-07" },
+    ];
+    list.push({
+      id: "proto-2",
+      patientId: p2.id,
+      patientName: p2.name,
+      name: "Protocolo Otimização Metabólica & Composição Corporal (3 meses)",
+      duration: "3 meses",
+      startDate: "2026-08-08",
+      endDate: "2026-11-08",
+      status: "Concluído",
+      medications: "Metformina 500mg pós-jantar; Coenzima Q10 100mg manhã; Suplementação de Whey isolado",
+      includedItems: "3 consultas médicas + 3 bioimpedâncias tetrapolares + painel laboratorial hormonal completo",
+      totalValue: total,
+      paymentMethod: "Cartão de Crédito",
+      installmentsCount,
+      installmentValue: instVal,
+      paidInstallments: 3,
+      installments,
+      paymentStatus: "Quitado",
+      visibleInPortal: true,
+      notes: "Protocolo finalizado com excelente resultado (-15,5 kg). Aguardando contratação do plano de manutenção metabólica.",
+    });
+  }
+
+  return list;
+}
+
 function loadDB(): any {
   try {
     const raw = localStorage.getItem(DB_KEY);
@@ -393,6 +474,9 @@ function loadDB(): any {
         }
         if (!Array.isArray(parsed.appointments)) {
           parsed.appointments = seedAppointments(parsed.patients);
+        }
+        if (!Array.isArray(parsed.protocols) || parsed.protocols.length === 0) {
+          parsed.protocols = seedProtocols(parsed.patients);
         }
         parsed.patients = parsed.patients.map((p: any) => ({
           ...p,
@@ -408,6 +492,7 @@ function loadDB(): any {
     admin: { username: MASTER_ADMIN_USER, passHash: HASH_ADMIN },
     patients: pts,
     appointments: seedAppointments(pts),
+    protocols: seedProtocols(pts),
   };
 }
 
@@ -421,6 +506,31 @@ function saveDB(db: any) {
   }
 }
 
+const PORTAL_PERMISSION_OPTIONS = [
+  { key: "comparativo", label: "Comparativo de avaliações", desc: "Tabela comparativa com evolução avaliação a avaliação" },
+  { key: "avaliacoes", label: "Avaliações", desc: "Histórico completo de bioimpedâncias e avaliações físicas" },
+  { key: "exames", label: "Exames", desc: "Resultados laboratoriais e faixas de referência" },
+  { key: "fotos", label: "Fotos", desc: "Galeria de fotos de evolução corporal" },
+  { key: "tratamento", label: "Tratamento", desc: "Linha do tempo de prescrições e condutas clínicas" },
+  { key: "protocolo", label: "Meu Protocolo", desc: "Protocolo contratado, medicações e situação das parcelas" },
+] as const;
+
+function getEffectivePortalPermissions(patient: any, db?: any) {
+  const perms = patient?.portalPermissions || {};
+  const patientProtocols = (db?.protocols || []).filter((pr: any) => pr.patientId === patient?.id);
+  const activeProto = patientProtocols.find((pr: any) => pr.status === "Ativo") || patientProtocols[0] || null;
+  const protoVisible = activeProto ? activeProto.visibleInPortal !== false : true;
+
+  return {
+    comparativo: perms.comparativo !== false,
+    avaliacoes: perms.avaliacoes !== false,
+    exames: perms.exames !== false,
+    fotos: perms.fotos !== false,
+    tratamento: perms.tratamento !== false,
+    protocolo: activeProto ? (perms.protocolo !== false && protoVisible) : perms.protocolo === true,
+  };
+}
+
 // ---------------------------------------------------------------------
 // Utilidades de formatação e cálculo
 // ---------------------------------------------------------------------
@@ -430,6 +540,9 @@ const fmt = (v: any, dec = 1) =>
   v === null || v === undefined || v === ""
     ? "—"
     : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: dec });
+
+const fmtBRL = (v: any) =>
+  Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const fdate = (iso: string) => (iso ? iso.split("-").reverse().join("/") : "—");
 
@@ -914,9 +1027,114 @@ td {
   white-space: nowrap;
 }
 
+/* Sidebar do Paciente & Suporte Mobile */
+.patient-sidebar-desktop {
+  display: flex;
+}
+.mobile-patient-bar {
+  display: none;
+}
+.mobile-drawer-backdrop {
+  display: none;
+}
+.mobile-quick-nav {
+  display: none;
+}
+
 @media (max-width: 1100px) {
   .patient-kpis-grid {
     grid-template-columns: repeat(4, 1fr);
+  }
+}
+@media (max-width: 768px) {
+  .patient-sidebar-desktop {
+    display: none !important;
+  }
+  .mobile-patient-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+  .mobile-quick-nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    position: sticky;
+    top: 57px;
+    z-index: 35;
+  }
+  .mobile-quick-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .mobile-quick-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+  .mobile-quick-chip.active {
+    background: linear-gradient(135deg, var(--gold2), var(--gold));
+    color: #ffffff;
+    border-color: transparent;
+    box-shadow: 0 2px 8px rgba(184, 137, 46, 0.28);
+  }
+  .mobile-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(18, 14, 10, 0.6);
+    backdrop-filter: blur(3px);
+    z-index: 99;
+  }
+  .mobile-drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 280px;
+    max-width: 85vw;
+    background: var(--card);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.28);
+    animation: slideInDrawer 0.22s ease-out;
+  }
+  @keyframes slideInDrawer {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+  .card.hero {
+    grid-template-columns: 1fr !important;
+    text-align: left;
+    gap: 16px;
+  }
+  .card.hero > div:last-child {
+    text-align: left !important;
+  }
+  .card.hero > div:last-child .num {
+    justify-content: flex-start !important;
   }
 }
 @media (max-width: 680px) {
@@ -2909,7 +3127,16 @@ function CadastroScreen({ db, setDB, onPatientCreated }: any) {
       restriction: f.restriction,
       notes: f.notes,
       username: user,
+      password: f.pass || "",
       passHash: f.pass ? await hash(f.pass) : "",
+      portalPermissions: {
+        comparativo: true,
+        avaliacoes: true,
+        exames: true,
+        fotos: true,
+        tratamento: true,
+        protocolo: true,
+      },
       createdAt: today(),
       evaluations: w0 !== null ? [{ id: uid(), date: today(), weight: w0, note: "Peso inicial de cadastro" }] : [],
       meds: f.medication ? [{ id: uid(), date: today(), text: `Prescrição inicial: ${f.medication}` }] : [],
@@ -3235,11 +3462,1747 @@ function SistemaScreen({ db, setDB }: any) {
 }
 
 // ---------------------------------------------------------------------
+// MODAL DE CADASTRO / EDIÇÃO DE PROTOCOLO E FINANÇAS
+// ---------------------------------------------------------------------
+function ProtocolModal({
+  initial,
+  defaultPatientId,
+  patients,
+  onSave,
+  onClose,
+}: any) {
+  const [patientId, setPatientId] = useState(initial?.patientId || defaultPatientId || (patients[0] ? patients[0].id : ""));
+  const [name, setName] = useState(initial?.name || "Protocolo Emagrecimento & Controle Metabólico (6 meses)");
+  const [duration, setDuration] = useState(initial?.duration || "6 meses");
+  const [startDate, setStartDate] = useState(initial?.startDate || today());
+  const [endDate, setEndDate] = useState(initial?.endDate || addDaysISO(today(), 180));
+  const [status, setStatus] = useState(initial?.status || "Ativo");
+  const [medications, setMedications] = useState(
+    initial?.medications || "Tirzepatida (Mounjaro) — 5 mg semanal; Ômega 3 DHA 1000mg; Vitamina D3 50.000 UI/semana"
+  );
+  const [includedItems, setIncludedItems] = useState(
+    initial?.includedItems || "Consultas médicas especializadas + bioimpedâncias tetrapolares periódicas + acompanhamento de exames laboratoriais + canal direto no WhatsApp"
+  );
+  const [totalValue, setTotalValue] = useState(initial?.totalValue !== undefined ? String(initial.totalValue) : "5400");
+  const [paymentMethod, setPaymentMethod] = useState(initial?.paymentMethod || "Cartão de Crédito");
+  const [installmentsCount, setInstallmentsCount] = useState(initial?.installmentsCount || 6);
+  const [paidInstallments, setPaidInstallments] = useState(initial?.paidInstallments !== undefined ? initial.paidInstallments : 1);
+  const [visibleInPortal, setVisibleInPortal] = useState<boolean>(initial?.visibleInPortal !== undefined ? initial.visibleInPortal : true);
+  const [notes, setNotes] = useState(initial?.notes || "");
+
+  const parsedTotal = Math.max(0, Number(String(totalValue).replace(/\./g, "").replace(",", ".")) || 0);
+  const parsedCount = Math.max(1, Number(installmentsCount) || 1);
+  const instVal = parsedCount > 0 ? parsedTotal / parsedCount : 0;
+
+  function handleQuickName(protoName: string, protoDuration: string, days: number, defaultMeds: string) {
+    setName(protoName);
+    setDuration(protoDuration);
+    setEndDate(addDaysISO(startDate, days));
+    if (!medications || medications === "") {
+      setMedications(defaultMeds);
+    }
+  }
+
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!patientId) return alert("Selecione o paciente.");
+    if (!name.trim()) return alert("Informe o nome do protocolo.");
+    if (parsedTotal <= 0) return alert("Informe o valor total do protocolo.");
+
+    const pt = patients.find((p: any) => p.id === patientId);
+
+    // Gerar ou atualizar parcelas
+    let installments: any[] = [];
+    if (initial?.installments && initial.installments.length === parsedCount) {
+      installments = initial.installments.map((inst: any, idx: number) => ({
+        ...inst,
+        number: idx + 1,
+        value: Math.round(instVal * 100) / 100,
+        status: idx < paidInstallments ? "Paga" : "Pendente",
+        paidAt: idx < paidInstallments ? (inst.paidAt || today()) : null,
+      }));
+    } else {
+      for (let i = 1; i <= parsedCount; i++) {
+        const isPaid = i <= paidInstallments;
+        installments.push({
+          number: i,
+          dueDate: addDaysISO(startDate, (i - 1) * 30),
+          value: Math.round(instVal * 100) / 100,
+          status: isPaid ? "Paga" : "Pendente",
+          paidAt: isPaid ? (i === 1 ? startDate : today()) : null,
+        });
+      }
+    }
+
+    const actuallyPaid = installments.filter((x: any) => x.status === "Paga").length;
+    let paymentStatus = "Em dia";
+    if (actuallyPaid === parsedCount) {
+      paymentStatus = "Quitado";
+    } else {
+      const t = today();
+      const hasOverdue = installments.some((x: any) => x.status === "Pendente" && x.dueDate < t);
+      if (hasOverdue) paymentStatus = "Em atraso";
+    }
+
+    const data = {
+      id: initial?.id || uid(),
+      patientId,
+      patientName: pt ? pt.name : "Paciente",
+      name: name.trim(),
+      duration: duration.trim(),
+      startDate,
+      endDate,
+      status,
+      medications: medications.trim(),
+      includedItems: includedItems.trim(),
+      totalValue: parsedTotal,
+      paymentMethod,
+      installmentsCount: parsedCount,
+      installmentValue: Math.round(instVal * 100) / 100,
+      paidInstallments: actuallyPaid,
+      installments,
+      paymentStatus,
+      visibleInPortal,
+      notes: notes.trim(),
+    };
+
+    onSave(data);
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal-content"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 660, maxHeight: "90vh", overflowY: "auto" }}
+      >
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <h2>{initial ? "Editar Protocolo & Finanças" : "Novo Protocolo & Plano Financeiro"}</h2>
+            <p className="mute" style={{ margin: "2px 0 0", fontSize: 13 }}>
+              Vincule protocolo clínico, medicações prescritas, valores e parcelamento ao paciente.
+            </p>
+          </div>
+          <button className="btn sm" onClick={onClose} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSave} className="form" style={{ display: "grid", gap: 14 }}>
+          {/* Paciente */}
+          <div>
+            <label>Paciente *</label>
+            <select
+              value={patientId}
+              onChange={(e) => setPatientId(e.target.value)}
+              disabled={!!initial}
+              required
+            >
+              {patients.map((p: any) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} {p.goal ? `(${p.goal})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Sugestões rápidas de protocolos */}
+          <div>
+            <label style={{ fontSize: 12 }}>Sugestões rápidas de protocolos clínicos:</label>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+              <button
+                type="button"
+                className="btn sm"
+                style={{ fontSize: 11.5 }}
+                onClick={() =>
+                  handleQuickName(
+                    "Protocolo Emagrecimento & Controle Metabólico (6 meses)",
+                    "6 meses",
+                    180,
+                    "Tirzepatida (Mounjaro) — 5 mg semanal; Ômega 3 DHA 1000mg; Vitamina D3 50.000 UI/semana"
+                  )
+                }
+              >
+                Emagrecimento (6 meses)
+              </button>
+              <button
+                type="button"
+                className="btn sm"
+                style={{ fontSize: 11.5 }}
+                onClick={() =>
+                  handleQuickName(
+                    "Protocolo Otimização Metabólica & Composição Corporal (3 meses)",
+                    "3 meses",
+                    90,
+                    "Metformina 500mg pós-jantar; Coenzima Q10 100mg; Suplemento Proteico Isolado"
+                  )
+                }
+              >
+                Otimização Metabólica (3 meses)
+              </button>
+              <button
+                type="button"
+                className="btn sm"
+                style={{ fontSize: 11.5 }}
+                onClick={() =>
+                  handleQuickName(
+                    "Protocolo Performance & Bioimpedância Avançada (12 semanas)",
+                    "12 semanas",
+                    84,
+                    "Creatina Monohidratada 5g/dia; Complexo B ativado; Zinco quelato 30mg"
+                  )
+                }
+              >
+                Performance (12 semanas)
+              </button>
+              <button
+                type="button"
+                className="btn sm"
+                style={{ fontSize: 11.5 }}
+                onClick={() =>
+                  handleQuickName(
+                    "Protocolo Anual de Manutenção Metabólica",
+                    "12 meses",
+                    365,
+                    "Ajuste sazonal de suplementação; Metformina de liberação prolongada"
+                  )
+                }
+              >
+                Manutenção Anual
+              </button>
+            </div>
+          </div>
+
+          {/* Nome e Duração */}
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+            <div>
+              <label>Nome do Protocolo *</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ex.: Protocolo Emagrecimento Intensivo"
+                required
+              />
+            </div>
+            <div>
+              <label>Duração *</label>
+              <input
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder="Ex.: 6 meses"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Datas e Status */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div>
+              <label>Data de Início</label>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+            </div>
+            <div>
+              <label>Data de Término</label>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+            </div>
+            <div>
+              <label>Situação do Protocolo</label>
+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="Ativo">Ativo</option>
+                <option value="Concluído">Concluído</option>
+                <option value="Pausado">Pausado</option>
+                <option value="Cancelado">Cancelado</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Medicações do Protocolo */}
+          <div>
+            <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
+                <Pill size={15} style={{ color: "var(--gold)" }} />
+                Medicações & Prescrições do Protocolo
+              </label>
+              <span className="mute" style={{ fontSize: 11.5 }}>Separe por ponto e vírgula (;)</span>
+            </div>
+            <textarea
+              rows={2}
+              value={medications}
+              onChange={(e) => setMedications(e.target.value)}
+              placeholder="Ex.: Tirzepatida (Mounjaro) 5mg semanal; Vitamina D3 50.000 UI/semana; Ômega 3 1000mg"
+              style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", background: "var(--card)", color: "var(--ink)", fontFamily: "inherit" }}
+            />
+          </div>
+
+          {/* Itens e Serviços Inclusos */}
+          <div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
+              <CheckCircle2 size={15} style={{ color: "var(--good)" }} />
+              Itens e Acompanhamentos Inclusos
+            </label>
+            <textarea
+              rows={2}
+              value={includedItems}
+              onChange={(e) => setIncludedItems(e.target.value)}
+              placeholder="Ex.: Consultas médicas mensais, bioimpedâncias periódicas, leitura de exames..."
+              style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", background: "var(--card)", color: "var(--ink)", fontFamily: "inherit" }}
+            />
+          </div>
+
+          {/* Bloco Financeiro: Valor, Forma de Pagamento e Parcelas */}
+          <div
+            style={{
+              padding: "14px 16px",
+              background: "var(--soft)",
+              borderRadius: 14,
+              border: "1px solid var(--line)",
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 13, color: "var(--gold)", textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 6 }}>
+              <DollarSign size={16} />
+              Condições Financeiras & Parcelamento
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <div>
+                <label>Valor Total (R$) *</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={totalValue}
+                  onChange={(e) => setTotalValue(e.target.value)}
+                  placeholder="Ex.: 5400"
+                  className="num"
+                  style={{ fontWeight: 700 }}
+                  required
+                />
+              </div>
+
+              <div>
+                <label>Forma de Pagamento</label>
+                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                  <option value="Cartão de Crédito">Cartão de Crédito</option>
+                  <option value="Boleto Parcelado">Boleto Parcelado</option>
+                  <option value="PIX à vista">PIX à vista</option>
+                  <option value="Transferência Bancária">Transferência Bancária</option>
+                  <option value="Dinheiro">Dinheiro</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Quantas vezes (Parcelas)</label>
+                <select
+                  value={installmentsCount}
+                  onChange={(e) => setInstallmentsCount(Number(e.target.value))}
+                  className="num"
+                >
+                  {Array.from({ length: 24 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n === 1 ? "1x (À vista)" : `${n}x`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Prévia das parcelas */}
+            <div
+              className="row"
+              style={{
+                justifyContent: "space-between",
+                padding: "10px 14px",
+                background: "var(--card)",
+                borderRadius: 10,
+                border: "1px solid var(--line)",
+              }}
+            >
+              <div>
+                <span className="mute" style={{ fontSize: 12 }}>Condição calculada:</span>
+                <div className="num" style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)" }}>
+                  {parsedCount}x de {fmtBRL(instVal)}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <span className="mute" style={{ fontSize: 12 }}>Total do contrato:</span>
+                <div className="num" style={{ fontWeight: 800, fontSize: 16, color: "var(--gold)" }}>
+                  {fmtBRL(parsedTotal)}
+                </div>
+              </div>
+            </div>
+
+            {/* Parcelas já quitadas na largada */}
+            <div>
+              <label>Parcelas já pagas (no momento da contratação):</label>
+              <select
+                value={paidInstallments}
+                onChange={(e) => setPaidInstallments(Number(e.target.value))}
+                className="num"
+              >
+                {Array.from({ length: parsedCount + 1 }, (_, i) => i).map((n) => (
+                  <option key={n} value={n}>
+                    {n === 0 ? "Nenhuma parcela paga ainda" : n === parsedCount ? `Todas as ${n} parcelas pagas (Quitado)` : `${n} de ${parsedCount} parcelas pagas`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Controle de Liberação para o Paciente no Portal */}
+          <div
+            style={{
+              padding: "14px 16px",
+              background: visibleInPortal ? "var(--goodbg)" : "var(--warnbg)",
+              borderRadius: 14,
+              border: `1.5px solid ${visibleInPortal ? "var(--good)" : "var(--warn)"}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13.5, color: visibleInPortal ? "var(--good)" : "var(--ink)" }}>
+                {visibleInPortal ? <Eye size={18} style={{ color: "var(--good)" }} /> : <EyeOff size={18} style={{ color: "var(--warn)" }} />}
+                <span>Visualização no Portal do Paciente:</span>
+                <span className={`chip ${visibleInPortal ? "good" : "bad"}`} style={{ fontSize: 11, padding: "2px 8px" }}>
+                  {visibleInPortal ? "Liberado (Ativado)" : "Oculto (Desativado)"}
+                </span>
+              </div>
+              <small className="mute" style={{ display: "block", marginTop: 4, fontSize: 12 }}>
+                {visibleInPortal
+                  ? "Ativado: O paciente verá a aba 'Meu Protocolo' com prescrições e parcelas no portal dele."
+                  : "Desativado: A aba 'Meu Protocolo' fica completamente oculta para o paciente."}
+              </small>
+            </div>
+            <button
+              type="button"
+              className={`btn sm ${visibleInPortal ? "" : "gold"}`}
+              onClick={() => setVisibleInPortal(!visibleInPortal)}
+              style={{ fontWeight: 700, padding: "6px 14px", flexShrink: 0 }}
+            >
+              {visibleInPortal ? (
+                <>
+                  <EyeOff size={14} /> Desativar para o paciente
+                </>
+              ) : (
+                <>
+                  <Eye size={14} /> Ativar para o paciente
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Observações */}
+          <div>
+            <label>Observações / Anotações do Contrato</label>
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Ex.: Débito automático no cartão; autorizada renovação em 6 meses..."
+            />
+          </div>
+
+          <div className="row" style={{ justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+            <button type="button" className="btn" onClick={onClose}>
+              Cancelar
+            </button>
+            <button type="submit" className="btn gold">
+              <Check size={16} />
+              {initial ? "Salvar alterações" : "Salvar protocolo financeiro"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// MODAL DE GERENCIAMENTO DE PARCELAS
+// ---------------------------------------------------------------------
+function InstallmentsModal({
+  protocol,
+  onSave,
+  onClose,
+}: any) {
+  const [installments, setInstallments] = useState<any[]>(protocol.installments || []);
+
+  const totalPaid = installments.filter((x: any) => x.status === "Paga").reduce((sum, x) => sum + Number(x.value || 0), 0);
+  const totalPending = installments.filter((x: any) => x.status !== "Paga").reduce((sum, x) => sum + Number(x.value || 0), 0);
+  const paidCount = installments.filter((x: any) => x.status === "Paga").length;
+  const t = today();
+
+  function toggleInstallment(number: number) {
+    const updated = installments.map((inst) => {
+      if (inst.number === number) {
+        const isPaid = inst.status === "Paga";
+        return {
+          ...inst,
+          status: isPaid ? "Pendente" : "Paga",
+          paidAt: isPaid ? null : today(),
+        };
+      }
+      return inst;
+    });
+
+    setInstallments(updated);
+
+    const nowPaidCount = updated.filter((x: any) => x.status === "Paga").length;
+    let paymentStatus = "Em dia";
+    if (nowPaidCount === updated.length) {
+      paymentStatus = "Quitado";
+    } else {
+      const hasOverdue = updated.some((x: any) => x.status === "Pendente" && x.dueDate < t);
+      if (hasOverdue) paymentStatus = "Em atraso";
+    }
+
+    onSave({
+      ...protocol,
+      installments: updated,
+      paidInstallments: nowPaidCount,
+      paymentStatus,
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal-content"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 640, maxHeight: "90vh", overflowY: "auto" }}
+      >
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <h2>Parcelas do Protocolo</h2>
+            <p className="mute" style={{ margin: "2px 0 0", fontSize: 13 }}>
+              <b>{protocol.patientName}</b> · {protocol.name}
+            </p>
+          </div>
+          <button className="btn sm" onClick={onClose} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Resumo da Quitação */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 10,
+            padding: "14px 16px",
+            background: "var(--soft)",
+            borderRadius: 12,
+            marginBottom: 16,
+          }}
+        >
+          <div>
+            <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Total Contratado</span>
+            <div className="num" style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)" }}>
+              {fmtBRL(protocol.totalValue)}
+            </div>
+            <small className="mute num" style={{ fontSize: 11 }}>{protocol.installmentsCount} parcelas</small>
+          </div>
+          <div>
+            <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Total Quitado</span>
+            <div className="num" style={{ fontWeight: 800, fontSize: 18, color: "var(--good)" }}>
+              {fmtBRL(totalPaid)}
+            </div>
+            <small className="good num" style={{ fontSize: 11, fontWeight: 700 }}>{paidCount} de {protocol.installmentsCount} pagas</small>
+          </div>
+          <div>
+            <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Saldo a Receber</span>
+            <div className="num" style={{ fontWeight: 800, fontSize: 18, color: "var(--gold)" }}>
+              {fmtBRL(totalPending)}
+            </div>
+            <small className="mute num" style={{ fontSize: 11 }}>{protocol.installmentsCount - paidCount} restantes</small>
+          </div>
+        </div>
+
+        {/* Barra de progresso */}
+        <div style={{ marginBottom: 16 }}>
+          <div className="row" style={{ justifyContent: "space-between", marginBottom: 4, fontSize: 12 }}>
+            <span className="mute">Progresso de quitação:</span>
+            <span className="num" style={{ fontWeight: 700 }}>
+              {Math.round((paidCount / (protocol.installmentsCount || 1)) * 100)}%
+            </span>
+          </div>
+          <div style={{ height: 8, background: "var(--line)", borderRadius: 4, overflow: "hidden" }}>
+            <div
+              style={{
+                height: "100%",
+                width: `${(paidCount / (protocol.installmentsCount || 1)) * 100}%`,
+                background: paidCount === protocol.installmentsCount ? "var(--good)" : "linear-gradient(90deg, var(--gold2), var(--gold))",
+                borderRadius: 4,
+                transition: "width .3s ease",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Lista de Parcelas */}
+        <div className="tscroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Parcela</th>
+                <th>Vencimento</th>
+                <th>Valor</th>
+                <th>Situação</th>
+                <th>Data Quitação</th>
+                <th style={{ textAlign: "right" }}>Ação rápida</th>
+              </tr>
+            </thead>
+            <tbody>
+              {installments.map((inst: any) => {
+                const isPaid = inst.status === "Paga";
+                const isOverdue = !isPaid && inst.dueDate < t;
+
+                return (
+                  <tr key={inst.number}>
+                    <td className="num"><b>{inst.number}ª Parcela</b></td>
+                    <td className="num">{fdate(inst.dueDate)}</td>
+                    <td className="num"><b>{fmtBRL(inst.value)}</b></td>
+                    <td>
+                      {isPaid ? (
+                        <span className="chip good" style={{ gap: 4 }}>
+                          <Check size={12} /> Paga
+                        </span>
+                      ) : isOverdue ? (
+                        <span className="chip bad">Em atraso</span>
+                      ) : (
+                        <span className="chip warn">Pendente</span>
+                      )}
+                    </td>
+                    <td className="num mute" style={{ fontSize: 12 }}>
+                      {inst.paidAt ? fdate(inst.paidAt) : "—"}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        type="button"
+                        className={`btn sm ${isPaid ? "" : "gold"}`}
+                        onClick={() => toggleInstallment(inst.number)}
+                        style={{ fontSize: 11 }}
+                      >
+                        {isPaid ? "Desmarcar" : "Marcar como paga"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 18 }}>
+          <button type="button" className="btn gold" onClick={onClose}>
+            Concluir
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// ABA "PROTOCOLO & FINANÇAS" NA FICHA DO PACIENTE
+// ---------------------------------------------------------------------
+function PatientProtocolTab({
+  patient,
+  db,
+  setDB,
+  isReadOnly = false,
+}: any) {
+  const [editingProto, setEditingProto] = useState<any>(null);
+  const [instModalProto, setInstModalProto] = useState<any>(null);
+  const [createModal, setCreateModal] = useState(false);
+
+  const protocols = (db.protocols || []).filter((pr: any) => pr.patientId === patient.id);
+  const activeProto = protocols.find((pr: any) => pr.status === "Ativo") || protocols[0] || null;
+
+  function handleSaveProtocol(savedData: any) {
+    const list = db.protocols || [];
+    const exists = list.some((x: any) => x.id === savedData.id);
+    const updated = exists ? list.map((x: any) => (x.id === savedData.id ? savedData : x)) : [...list, savedData];
+    const updatedPatients = (db.patients || []).map((pt: any) =>
+      pt.id === savedData.patientId
+        ? {
+            ...pt,
+            portalPermissions: {
+              ...(pt.portalPermissions || {}),
+              protocolo: savedData.visibleInPortal !== false,
+            },
+          }
+        : pt
+    );
+    setDB({ ...db, protocols: updated, patients: updatedPatients });
+    setEditingProto(null);
+    setCreateModal(false);
+  }
+
+  function handleToggleInstallment(number: number) {
+    if (!activeProto || isReadOnly) return;
+    const installments = activeProto.installments || [];
+    const updatedInsts = installments.map((inst: any) => {
+      if (inst.number === number) {
+        const isPaid = inst.status === "Paga";
+        return {
+          ...inst,
+          status: isPaid ? "Pendente" : "Paga",
+          paidAt: isPaid ? null : today(),
+        };
+      }
+      return inst;
+    });
+
+    const paidCount = updatedInsts.filter((x: any) => x.status === "Paga").length;
+    let paymentStatus = "Em dia";
+    if (paidCount === updatedInsts.length) {
+      paymentStatus = "Quitado";
+    } else {
+      const t = today();
+      if (updatedInsts.some((x: any) => x.status === "Pendente" && x.dueDate < t)) {
+        paymentStatus = "Em atraso";
+      }
+    }
+
+    const updatedProto = {
+      ...activeProto,
+      installments: updatedInsts,
+      paidInstallments: paidCount,
+      paymentStatus,
+    };
+
+    handleSaveProtocol(updatedProto);
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      {/* Cabeçalho da Aba */}
+      <div className="row noprint" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h2>Protocolo Clínico & Gestão Financeira</h2>
+          <p className="mute" style={{ margin: "2px 0 0", fontSize: 13 }}>
+            Plano de acompanhamento, prescrições medicamentosas, valor total contratado e parcelamento de <b>{patient.name}</b>.
+          </p>
+        </div>
+        {!isReadOnly && (
+          <div className="row" style={{ gap: 8 }}>
+            {activeProto && (
+              <button className="btn sm" onClick={() => setEditingProto(activeProto)}>
+                <Edit2 size={14} />
+                Editar protocolo
+              </button>
+            )}
+            <button className="btn sm gold" onClick={() => setCreateModal(true)}>
+              <Plus size={14} />
+              + Novo protocolo
+            </button>
+          </div>
+        )}
+      </div>
+
+      {activeProto ? (
+        <>
+          {/* Card Hero do Protocolo */}
+          <div
+            className="card"
+            style={{
+              borderLeft: "5px solid var(--gold)",
+              display: "grid",
+              gap: 14,
+            }}
+          >
+            <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <span className="mute" style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Protocolo Ativo do Paciente
+                </span>
+                <h3 style={{ fontSize: 24, marginTop: 2 }}>{activeProto.name}</h3>
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <span className={`chip ${activeProto.status === "Ativo" ? "good" : "neu"}`}>
+                  {activeProto.status}
+                </span>
+                <span className="chip neu num">
+                  Duração: {activeProto.duration}
+                </span>
+                <span className={`chip ${activeProto.paymentStatus === "Quitado" ? "good" : activeProto.paymentStatus === "Em atraso" ? "bad" : "warn"}`}>
+                  {activeProto.paymentStatus}
+                </span>
+              </div>
+            </div>
+
+            <div className="mute num" style={{ fontSize: 13 }}>
+              Vigência: <b>{fdate(activeProto.startDate)}</b> até <b>{fdate(activeProto.endDate)}</b>
+            </div>
+
+            {/* Controle de Liberação para o Paciente no Portal */}
+            {!isReadOnly && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: activeProto.visibleInPortal !== false ? "var(--goodbg)" : "var(--warnbg)",
+                  border: `1px solid ${activeProto.visibleInPortal !== false ? "var(--good)" : "var(--warn)"}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      background: activeProto.visibleInPortal !== false ? "var(--good)" : "var(--warn)",
+                      color: "#fff",
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    {activeProto.visibleInPortal !== false ? <Eye size={17} /> : <EyeOff size={17} />}
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>Visualização no Portal do Paciente:</span>
+                      <span
+                        className={`chip ${activeProto.visibleInPortal !== false ? "good" : "bad"}`}
+                        style={{ fontSize: 11, padding: "2px 8px" }}
+                      >
+                        {activeProto.visibleInPortal !== false ? "LIBERADA (Ativa)" : "BLOQUEADA (Oculta)"}
+                      </span>
+                    </div>
+                    <small className="mute" style={{ display: "block", fontSize: 11.5 }}>
+                      {activeProto.visibleInPortal !== false
+                        ? "O paciente visualiza a aba 'Meu Protocolo' com prescrições e parcelamento no login dele."
+                        : "A aba 'Meu Protocolo' está oculta e não aparece no portal do paciente."}
+                    </small>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className={`btn sm ${activeProto.visibleInPortal !== false ? "" : "gold"}`}
+                  onClick={() => {
+                    const newVis = !(activeProto.visibleInPortal !== false);
+                    handleSaveProtocol({ ...activeProto, visibleInPortal: newVis });
+                  }}
+                  style={{ fontWeight: 700 }}
+                >
+                  {activeProto.visibleInPortal !== false ? (
+                    <>
+                      <EyeOff size={14} /> Desativar para o paciente
+                    </>
+                  ) : (
+                    <>
+                      <Eye size={14} /> Ativar para o paciente
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Seção 1: Medicações Prescritas do Protocolo */}
+            <div
+              style={{
+                padding: "14px 16px",
+                background: "var(--soft)",
+                borderRadius: 12,
+                border: "1px solid var(--line)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13, color: "var(--gold)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                <Pill size={16} />
+                Medicações & Prescrições do Protocolo
+              </div>
+              {activeProto.medications ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {activeProto.medications.split(/[;\n]+/).filter(Boolean).map((med: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="chip"
+                      style={{
+                        background: "var(--card)",
+                        border: "1px solid var(--line)",
+                        color: "var(--ink)",
+                        padding: "6px 12px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+                      }}
+                    >
+                      <Pill size={13} style={{ color: "var(--gold)" }} />
+                      {med.trim()}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mute" style={{ margin: 0 }}>Nenhuma medicação específica registrada neste protocolo.</p>
+              )}
+            </div>
+
+            {/* Seção 2: Itens Inclusos */}
+            {activeProto.includedItems && (
+              <div
+                style={{
+                  padding: "12px 16px",
+                  background: "var(--card)",
+                  borderRadius: 12,
+                  border: "1px solid var(--line)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 12.5, color: "var(--good)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  <CheckCircle2 size={15} />
+                  Serviços e Acompanhamentos Inclusos
+                </div>
+                <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: "var(--ink)" }}>
+                  {activeProto.includedItems}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Seção 3: Resumo Financeiro & Parcelas */}
+          <div className="card" style={{ display: "grid", gap: 16 }}>
+            <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Wallet size={18} style={{ color: "var(--gold)" }} />
+                <h3>Condições Financeiras & Parcelas</h3>
+              </div>
+              {!isReadOnly && (
+                <button className="btn sm gold" onClick={() => setInstModalProto(activeProto)}>
+                  <CreditCard size={14} />
+                  Gerenciar parcelas
+                </button>
+              )}
+            </div>
+
+            {/* Cards de Métricas Financeiras */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 12,
+              }}
+            >
+              <div style={{ padding: "12px 16px", background: "var(--soft)", borderRadius: 12, border: "1px solid var(--line)" }}>
+                <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Valor Total do Protocolo</span>
+                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: "var(--ink)", marginTop: 4 }}>
+                  {fmtBRL(activeProto.totalValue)}
+                </div>
+                <small className="mute" style={{ fontSize: 11.5 }}>
+                  {activeProto.paymentMethod || "Cartão"}
+                </small>
+              </div>
+
+              <div style={{ padding: "12px 16px", background: "var(--soft)", borderRadius: 12, border: "1px solid var(--line)" }}>
+                <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Quantas Vezes / Parcelas</span>
+                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: "var(--gold)", marginTop: 4 }}>
+                  {activeProto.installmentsCount}x
+                </div>
+                <small className="mute num" style={{ fontSize: 11.5 }}>
+                  de {fmtBRL(activeProto.installmentValue)}
+                </small>
+              </div>
+
+              <div style={{ padding: "12px 16px", background: "var(--soft)", borderRadius: 12, border: "1px solid var(--line)" }}>
+                <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Total Quitado</span>
+                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: "var(--good)", marginTop: 4 }}>
+                  {fmtBRL((activeProto.paidInstallments || 0) * (activeProto.installmentValue || 0))}
+                </div>
+                <small className="good num" style={{ fontSize: 11.5, fontWeight: 700 }}>
+                  {activeProto.paidInstallments || 0} de {activeProto.installmentsCount} pagas
+                </small>
+              </div>
+
+              <div style={{ padding: "12px 16px", background: "var(--soft)", borderRadius: 12, border: "1px solid var(--line)" }}>
+                <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Saldo a Receber</span>
+                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: "var(--gold)", marginTop: 4 }}>
+                  {fmtBRL(Math.max(0, (activeProto.totalValue || 0) - ((activeProto.paidInstallments || 0) * (activeProto.installmentValue || 0))))}
+                </div>
+                <small className="mute num" style={{ fontSize: 11.5 }}>
+                  {activeProto.installmentsCount - (activeProto.paidInstallments || 0)} parcelas restantes
+                </small>
+              </div>
+            </div>
+
+            {/* Barra de Progresso de Quitação */}
+            <div>
+              <div className="row" style={{ justifyContent: "space-between", marginBottom: 6, fontSize: 12.5 }}>
+                <span className="mute">Progresso das parcelas pagas:</span>
+                <span className="num" style={{ fontWeight: 800 }}>
+                  {Math.round(((activeProto.paidInstallments || 0) / (activeProto.installmentsCount || 1)) * 100)}% concluído
+                </span>
+              </div>
+              <div style={{ height: 10, background: "var(--line)", borderRadius: 5, overflow: "hidden" }}>
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${((activeProto.paidInstallments || 0) / (activeProto.installmentsCount || 1)) * 100}%`,
+                    background:
+                      (activeProto.paidInstallments || 0) === activeProto.installmentsCount
+                        ? "var(--good)"
+                        : "linear-gradient(90deg, var(--gold2), var(--gold))",
+                    borderRadius: 5,
+                    transition: "width .3s ease",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Tabela de Parcelas do Paciente */}
+            <div className="tscroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Parcela</th>
+                    <th>Vencimento</th>
+                    <th>Valor</th>
+                    <th>Situação</th>
+                    <th>Data Quitação</th>
+                    {!isReadOnly && <th style={{ textAlign: "right" }}>Ação rápida</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(activeProto.installments || []).map((inst: any) => {
+                    const isPaid = inst.status === "Paga";
+                    const isOverdue = !isPaid && inst.dueDate < today();
+
+                    return (
+                      <tr key={inst.number}>
+                        <td className="num"><b>{inst.number}ª Parcela</b></td>
+                        <td className="num">{fdate(inst.dueDate)}</td>
+                        <td className="num"><b>{fmtBRL(inst.value)}</b></td>
+                        <td>
+                          {isPaid ? (
+                            <span className="chip good" style={{ gap: 4 }}>
+                              <Check size={12} /> Paga
+                            </span>
+                          ) : isOverdue ? (
+                            <span className="chip bad">Em atraso</span>
+                          ) : (
+                            <span className="chip warn">Pendente</span>
+                          )}
+                        </td>
+                        <td className="num mute" style={{ fontSize: 12 }}>
+                          {inst.paidAt ? fdate(inst.paidAt) : "—"}
+                        </td>
+                        {!isReadOnly && (
+                          <td style={{ textAlign: "right" }}>
+                            <button
+                              type="button"
+                              className={`btn sm ${isPaid ? "" : "gold"}`}
+                              onClick={() => handleToggleInstallment(inst.number)}
+                              style={{ fontSize: 11 }}
+                            >
+                              {isPaid ? "Desmarcar" : "Marcar como paga"}
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {activeProto.notes && (
+              <div className="mute" style={{ fontSize: 12.5, fontStyle: "italic", marginTop: 4 }}>
+                * Observações: {activeProto.notes}
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        /* Estado sem protocolo */
+        <div
+          className="card"
+          style={{
+            textAlign: "center",
+            padding: "48px 24px",
+            display: "grid",
+            gap: 12,
+            placeItems: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 54,
+              height: 54,
+              borderRadius: "50%",
+              background: "var(--soft)",
+              display: "grid",
+              placeItems: "center",
+              color: "var(--gold)",
+            }}
+          >
+            <CreditCard size={26} />
+          </div>
+          <div>
+            <h3>Nenhum protocolo vinculado</h3>
+            <p className="mute" style={{ maxWidth: 440, margin: "6px auto 0" }}>
+              {isReadOnly
+                ? "Seu plano clínico e financeiro ainda não foi disponibilizado pela clínica."
+                : `Cadastre um protocolo de acompanhamento clínico, prescrições de medicações e plano de parcelamento para ${patient.name}.`}
+            </p>
+          </div>
+          {!isReadOnly && (
+            <button className="btn gold" onClick={() => setCreateModal(true)} style={{ marginTop: 8 }}>
+              <Plus size={16} />
+              + Cadastrar protocolo para {patient.name}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Modais */}
+      {editingProto && (
+        <ProtocolModal
+          initial={editingProto}
+          patients={db.patients}
+          onSave={handleSaveProtocol}
+          onClose={() => setEditingProto(null)}
+        />
+      )}
+
+      {createModal && (
+        <ProtocolModal
+          defaultPatientId={patient.id}
+          patients={db.patients}
+          onSave={handleSaveProtocol}
+          onClose={() => setCreateModal(false)}
+        />
+      )}
+
+      {instModalProto && (
+        <InstallmentsModal
+          protocol={instModalProto}
+          onSave={(up: any) => {
+            handleSaveProtocol(up);
+            setInstModalProto(up);
+          }}
+          onClose={() => setInstModalProto(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// TELA PRINCIPAL DE FINANÇAS & PROTOCOLOS (ADMIN)
+// ---------------------------------------------------------------------
+function FinancasScreen({
+  db,
+  setDB,
+  onOpenPatient,
+}: any) {
+  const [search, setSearch] = useState("");
+  const [patientFilter, setPatientFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [paymentFilter, setPaymentFilter] = useState("all");
+  const [portalFilter, setPortalFilter] = useState("all");
+  const [editingProto, setEditingProto] = useState<any>(null);
+  const [instModalProto, setInstModalProto] = useState<any>(null);
+  const [createModal, setCreateModal] = useState(false);
+
+  const protocols: any[] = db.protocols || [];
+
+  // Cálculos de KPIs Globais
+  const totalContracted = useMemo(() => {
+    return protocols.reduce((sum, p) => sum + Number(p.totalValue || 0), 0);
+  }, [protocols]);
+
+  const totalPaid = useMemo(() => {
+    return protocols.reduce((sum, p) => {
+      const insts = p.installments || [];
+      const paid = insts.filter((x: any) => x.status === "Paga").reduce((s: number, x: any) => s + Number(x.value || 0), 0);
+      return sum + paid;
+    }, 0);
+  }, [protocols]);
+
+  const totalPending = useMemo(() => {
+    return Math.max(0, totalContracted - totalPaid);
+  }, [totalContracted, totalPaid]);
+
+  const activeCount = useMemo(() => {
+    return protocols.filter((p) => p.status === "Ativo").length;
+  }, [protocols]);
+
+  // Filtragem dos protocolos
+  const filtered = useMemo(() => {
+    return protocols.filter((p) => {
+      const matchSearch =
+        !search ||
+        normalizeStr(p.patientName).includes(normalizeStr(search)) ||
+        normalizeStr(p.name).includes(normalizeStr(search)) ||
+        normalizeStr(p.medications || "").includes(normalizeStr(search));
+
+      const matchPatient = patientFilter === "all" || p.patientId === patientFilter;
+      const matchStatus = statusFilter === "all" || p.status === statusFilter;
+      const matchPayment = paymentFilter === "all" || p.paymentStatus === paymentFilter;
+      const matchPortal =
+        portalFilter === "all" ||
+        (portalFilter === "released" && p.visibleInPortal !== false) ||
+        (portalFilter === "hidden" && p.visibleInPortal === false);
+
+      return matchSearch && matchPatient && matchStatus && matchPayment && matchPortal;
+    });
+  }, [protocols, search, patientFilter, statusFilter, paymentFilter, portalFilter]);
+
+  function handleSaveProtocol(savedData: any) {
+    const list = db.protocols || [];
+    const exists = list.some((x: any) => x.id === savedData.id);
+    const updated = exists ? list.map((x: any) => (x.id === savedData.id ? savedData : x)) : [...list, savedData];
+    const updatedPatients = (db.patients || []).map((pt: any) =>
+      pt.id === savedData.patientId
+        ? {
+            ...pt,
+            portalPermissions: {
+              ...(pt.portalPermissions || {}),
+              protocolo: savedData.visibleInPortal !== false,
+            },
+          }
+        : pt
+    );
+    setDB({ ...db, protocols: updated, patients: updatedPatients });
+    setEditingProto(null);
+    setCreateModal(false);
+  }
+
+  function handleDeleteProtocol(id: string, name: string) {
+    if (!confirm(`Deseja realmente excluir o protocolo "${name}"?`)) return;
+    setDB({ ...db, protocols: (db.protocols || []).filter((x: any) => x.id !== id) });
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 20 }}>
+      {/* Top Header */}
+      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+        <div>
+          <h1>Finanças & Protocolos Clínicos</h1>
+          <p className="mute" style={{ margin: "2px 0 0" }}>
+            Acompanhamento de protocolos por paciente, prescrições de medicações, faturamento e controle de parcelas.
+          </p>
+        </div>
+        <button className="btn gold" onClick={() => setCreateModal(true)}>
+          <Plus size={16} />
+          + Novo protocolo financeiro
+        </button>
+      </div>
+
+      {/* 4 Cards de Indicadores Financeiros */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 14,
+        }}
+      >
+        {/* 1. Faturamento Total Contratado */}
+        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Faturamento Contratado
+            </span>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: "var(--soft)",
+                display: "grid",
+                placeItems: "center",
+                color: "var(--gold)",
+              }}
+            >
+              <DollarSign size={18} />
+            </div>
+          </div>
+          <div className="num" style={{ fontSize: 28, fontWeight: 800, color: "var(--ink)", lineHeight: 1 }}>
+            {fmtBRL(totalContracted)}
+          </div>
+          <div className="mute" style={{ fontSize: 12, marginTop: "auto" }}>
+            Total dos {protocols.length} protocolos registrados
+          </div>
+        </div>
+
+        {/* 2. Total Quitado / Recebido */}
+        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Total Recebido / Quitado
+            </span>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: "var(--goodbg)",
+                display: "grid",
+                placeItems: "center",
+                color: "var(--good)",
+              }}
+            >
+              <CheckCircle2 size={18} />
+            </div>
+          </div>
+          <div className="num" style={{ fontSize: 28, fontWeight: 800, color: "var(--good)", lineHeight: 1 }}>
+            {fmtBRL(totalPaid)}
+          </div>
+          <div className="good num" style={{ fontSize: 12, fontWeight: 700, marginTop: "auto" }}>
+            {Math.round((totalPaid / (totalContracted || 1)) * 100)}% do faturamento quitado
+          </div>
+        </div>
+
+        {/* 3. A Receber (Parcelas Futuras) */}
+        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              A Receber (Parcelas Futuras)
+            </span>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: "var(--warnbg)",
+                display: "grid",
+                placeItems: "center",
+                color: "var(--warn)",
+              }}
+            >
+              <Wallet size={18} />
+            </div>
+          </div>
+          <div className="num" style={{ fontSize: 28, fontWeight: 800, color: "var(--gold)", lineHeight: 1 }}>
+            {fmtBRL(totalPending)}
+          </div>
+          <div className="mute" style={{ fontSize: 12, marginTop: "auto" }}>
+            Saldo em parcelas a vencer
+          </div>
+        </div>
+
+        {/* 4. Protocolos Ativos */}
+        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <span className="mute" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Protocolos em Andamento
+            </span>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: "var(--soft)",
+                display: "grid",
+                placeItems: "center",
+                color: "var(--gold)",
+              }}
+            >
+              <CreditCard size={18} />
+            </div>
+          </div>
+          <div className="num" style={{ fontSize: 28, fontWeight: 800, color: "var(--ink)", lineHeight: 1 }}>
+            {activeCount} <span style={{ fontSize: 16, fontWeight: 600, color: "var(--mute)" }}>ativos</span>
+          </div>
+          <div className="mute num" style={{ fontSize: 12, marginTop: "auto" }}>
+            {protocols.length - activeCount} concluídos / finalizados
+          </div>
+        </div>
+      </div>
+
+      {/* Barra de Filtros & Busca */}
+      <div
+        className="card"
+        style={{
+          padding: "12px 16px",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, flex: 1, minWidth: 260 }}>
+          {/* Busca por texto */}
+          <div style={{ position: "relative", minWidth: 220, flex: 1 }}>
+            <Search size={15} style={{ position: "absolute", left: 10, top: 12, color: "var(--mute)" }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por paciente, protocolo ou medicação..."
+              style={{ paddingLeft: 34, width: "100%" }}
+            />
+          </div>
+
+          {/* Filtro por Paciente */}
+          <select
+            value={patientFilter}
+            onChange={(e) => setPatientFilter(e.target.value)}
+            style={{ width: "auto", minWidth: 160 }}
+          >
+            <option value="all">Todos os pacientes</option>
+            {db.patients.map((pt: any) => (
+              <option key={pt.id} value={pt.id}>
+                {pt.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Filtro por Status do Protocolo */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={{ width: "auto" }}
+          >
+            <option value="all">Status: Todos</option>
+            <option value="Ativo">Ativo</option>
+            <option value="Concluído">Concluído</option>
+            <option value="Pausado">Pausado</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
+
+          {/* Filtro por Situação de Pagamento */}
+          <select
+            value={paymentFilter}
+            onChange={(e) => setPaymentFilter(e.target.value)}
+            style={{ width: "auto" }}
+          >
+            <option value="all">Pagamento: Todos</option>
+            <option value="Em dia">Em dia</option>
+            <option value="Quitado">Quitado</option>
+            <option value="Em atraso">Em atraso</option>
+          </select>
+
+          {/* Filtro por Visibilidade no Portal */}
+          <select
+            value={portalFilter}
+            onChange={(e) => setPortalFilter(e.target.value)}
+            style={{ width: "auto" }}
+          >
+            <option value="all">Portal: Todos</option>
+            <option value="released">Portal: Liberado (Ativo)</option>
+            <option value="hidden">Portal: Oculto (Desativado)</option>
+          </select>
+        </div>
+
+        <span className="mute num" style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
+          {filtered.length} protocolo(s) listado(s)
+        </span>
+      </div>
+
+      {/* Tabela Completa de Protocolos & Finanças Conjugada com Pacientes */}
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <div className="tscroll">
+          <table style={{ margin: 0 }}>
+            <thead>
+              <tr style={{ background: "var(--soft)" }}>
+                <th style={{ minWidth: 190 }}>Paciente</th>
+                <th style={{ minWidth: 220 }}>Protocolo & Duração</th>
+                <th style={{ minWidth: 230 }}>Medicações do Protocolo</th>
+                <th style={{ minWidth: 180 }}>Valor & Parcelamento</th>
+                <th style={{ minWidth: 160 }}>Quitação / Parcelas</th>
+                <th style={{ minWidth: 110 }}>Situação</th>
+                <th style={{ minWidth: 140 }}>No Portal</th>
+                <th style={{ minWidth: 170, textAlign: "right" }}>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((proto: any) => {
+                const pt = db.patients.find((p: any) => p.id === proto.patientId);
+                const paidCount = proto.paidInstallments || 0;
+                const totalCount = proto.installmentsCount || 1;
+                const pct = Math.round((paidCount / totalCount) * 100);
+
+                return (
+                  <tr key={proto.id}>
+                    {/* Paciente conjugado com link direto para prontuário */}
+                    <td>
+                      <div
+                        className="row tr-click"
+                        onClick={() => onOpenPatient(proto.patientId, "protocolo")}
+                        title="Abrir ficha deste paciente"
+                        style={{ gap: 10, cursor: "pointer" }}
+                      >
+                        <div
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: "50%",
+                            background: "linear-gradient(135deg, var(--gold2), var(--gold))",
+                            color: "#fff",
+                            display: "grid",
+                            placeItems: "center",
+                            fontWeight: 700,
+                            fontSize: 14,
+                            fontFamily: "'Cormorant Garamond', Georgia, serif",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {initials(proto.patientName)}
+                        </div>
+                        <div>
+                          <b style={{ color: "var(--ink)", textDecoration: "underline", textDecorationColor: "var(--gold2)" }}>
+                            {proto.patientName}
+                          </b>
+                          <div className="mute num" style={{ fontSize: 11.5 }}>
+                            {pt?.phone ? pt.phone : pt?.goal || "Paciente"}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Protocolo & Duração */}
+                    <td>
+                      <div>
+                        <b>{proto.name}</b>
+                        <div className="row" style={{ gap: 6, marginTop: 4 }}>
+                          <span className="chip neu num" style={{ fontSize: 11, padding: "2px 8px" }}>
+                            {proto.duration}
+                          </span>
+                          <span className="mute num" style={{ fontSize: 11 }}>
+                            {short(proto.startDate)} a {short(proto.endDate)}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Medicações do Protocolo */}
+                    <td>
+                      {proto.medications ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {proto.medications.split(/[;\n]+/).filter(Boolean).map((med: string, i: number) => (
+                            <span
+                              key={i}
+                              className="chip"
+                              style={{
+                                fontSize: 11,
+                                padding: "2px 8px",
+                                background: "var(--soft)",
+                                border: "1px solid var(--line)",
+                                color: "var(--ink)",
+                              }}
+                            >
+                              <Pill size={11} style={{ color: "var(--gold)" }} />
+                              {med.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="mute" style={{ fontSize: 12 }}>—</span>
+                      )}
+                    </td>
+
+                    {/* Valor & Parcelamento */}
+                    <td>
+                      <div className="num" style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)" }}>
+                        {fmtBRL(proto.totalValue)}
+                      </div>
+                      <div className="mute num" style={{ fontSize: 12 }}>
+                        {proto.installmentsCount}x de {fmtBRL(proto.installmentValue)}
+                      </div>
+                      <div className="mute" style={{ fontSize: 11, marginTop: 2 }}>
+                        {proto.paymentMethod || "Cartão"}
+                      </div>
+                    </td>
+
+                    {/* Barra de Progresso de Quitação & Parcelas */}
+                    <td>
+                      <div className="row" style={{ justifyContent: "space-between", marginBottom: 3, fontSize: 11.5 }}>
+                        <span className="num" style={{ fontWeight: 700 }}>
+                          {paidCount}/{totalCount} pagas
+                        </span>
+                        <span className="mute num">{pct}%</span>
+                      </div>
+                      <div style={{ height: 6, background: "var(--line)", borderRadius: 3, overflow: "hidden" }}>
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${pct}%`,
+                            background: pct === 100 ? "var(--good)" : "linear-gradient(90deg, var(--gold2), var(--gold))",
+                            borderRadius: 3,
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="btn sm"
+                        onClick={() => setInstModalProto(proto)}
+                        style={{ marginTop: 6, fontSize: 11, padding: "2px 8px", width: "100%", justifyContent: "center" }}
+                      >
+                        <CreditCard size={12} />
+                        Ver parcelas
+                      </button>
+                    </td>
+
+                    {/* Situação */}
+                    <td>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <span className={`chip ${proto.status === "Ativo" ? "good" : "neu"}`} style={{ fontSize: 11, padding: "2px 6px" }}>
+                          {proto.status}
+                        </span>
+                        <span
+                          className={`chip ${proto.paymentStatus === "Quitado" ? "good" : proto.paymentStatus === "Em atraso" ? "bad" : "warn"}`}
+                          style={{ fontSize: 11, padding: "2px 6px" }}
+                        >
+                          {proto.paymentStatus}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* No Portal: Liberar / Desativar com 1 clique */}
+                    <td>
+                      <button
+                        type="button"
+                        className={`btn sm ${proto.visibleInPortal !== false ? "" : "gold"}`}
+                        onClick={() => {
+                          const newVis = !(proto.visibleInPortal !== false);
+                          handleSaveProtocol({ ...proto, visibleInPortal: newVis });
+                        }}
+                        title={
+                          proto.visibleInPortal !== false
+                            ? "Visualização ativada: Clique para desativar e ocultar do portal do paciente"
+                            : "Visualização desativada: Clique para ativar e liberar no portal do paciente"
+                        }
+                        style={{
+                          fontSize: 11.5,
+                          padding: "4px 8px",
+                          gap: 5,
+                          fontWeight: 700,
+                          borderRadius: 8,
+                          border: `1.5px solid ${proto.visibleInPortal !== false ? "var(--good)" : "var(--warn)"}`,
+                          background: proto.visibleInPortal !== false ? "var(--goodbg)" : "var(--warnbg)",
+                          color: proto.visibleInPortal !== false ? "var(--good)" : "var(--warn)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {proto.visibleInPortal !== false ? (
+                          <>
+                            <Eye size={13} />
+                            <span>Liberado</span>
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff size={13} />
+                            <span>Desativado</span>
+                          </>
+                        )}
+                      </button>
+                    </td>
+
+                    {/* Ações */}
+                    <td style={{ textAlign: "right" }}>
+                      <div className="row" style={{ justifyContent: "flex-end", gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn sm"
+                          onClick={() => onOpenPatient(proto.patientId, "protocolo")}
+                          title="Ver protocolo na ficha do paciente"
+                          style={{ padding: "5px 8px" }}
+                        >
+                          Ver ficha
+                        </button>
+                        <button
+                          type="button"
+                          className="btn sm"
+                          onClick={() => setEditingProto(proto)}
+                          title="Editar protocolo"
+                          style={{ padding: "5px 8px" }}
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn sm danger"
+                          onClick={() => handleDeleteProtocol(proto.id, proto.name)}
+                          title="Excluir protocolo"
+                          style={{ padding: "5px 8px" }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {!filtered.length && (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "36px 16px" }} className="mute">
+                    Nenhum protocolo financeiro encontrado para os filtros selecionados.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modais */}
+      {editingProto && (
+        <ProtocolModal
+          initial={editingProto}
+          patients={db.patients}
+          onSave={handleSaveProtocol}
+          onClose={() => setEditingProto(null)}
+        />
+      )}
+
+      {createModal && (
+        <ProtocolModal
+          patients={db.patients}
+          onSave={handleSaveProtocol}
+          onClose={() => setCreateModal(false)}
+        />
+      )}
+
+      {instModalProto && (
+        <InstallmentsModal
+          protocol={instModalProto}
+          onSave={(up: any) => {
+            handleSaveProtocol(up);
+            setInstModalProto(up);
+          }}
+          onClose={() => setInstModalProto(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
 // 8. FICHA DO PACIENTE (PAINEL + COMPARATIVO + ABAS)
 // ---------------------------------------------------------------------
-function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isReadOnly }: any) {
-  const [tab, setTab] = useState("painel");
+function PatientRecord({
+  p,
+  db,
+  setDB,
+  update,
+  remove,
+  back,
+  onOpenBookingModal,
+  isReadOnly,
+  activeTab: controlledTab,
+  onTabChange,
+  hideTopTabs = false,
+}: any) {
+  const [internalTab, setInternalTab] = useState("painel");
+  const tab = controlledTab !== undefined ? controlledTab : internalTab;
+  const setTab = onTabChange || setInternalTab;
   const [editModal, setEditModal] = useState(false);
+  const [permsModal, setPermsModal] = useState(false);
+  const [evalModal, setEvalModal] = useState<any>(null);
+  const [clinicalModal, setClinicalModal] = useState(false);
+
+  const effectivePerms = getEffectivePortalPermissions(p, db);
+  const releasedCount = Object.values(effectivePerms).filter(Boolean).length;
 
   const ev = sorted(p.evaluations);
   const last = ev[ev.length - 1];
@@ -3269,6 +5232,7 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
     ["exames", "Exames"],
     ["fotos", "Fotos"],
     ["tratamento", "Tratamento"],
+    ["protocolo", "Protocolo & Finanças"],
   ];
 
   return (
@@ -3285,6 +5249,13 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
             <span className={`chip ${p.username ? "good" : "neu"}`} style={{ fontSize: 12, padding: "5px 12px" }}>
               {p.username ? `Acesso: ${p.username} / senha: ${p.password || "123"}` : "Sem acesso ao portal"}
             </span>
+            <button className="btn sm" onClick={() => setPermsModal(true)}>
+              <Lock size={14} />
+              Permissões do portal
+              <span className={`chip num ${releasedCount === 6 ? "good" : releasedCount === 0 ? "bad" : "warn"}`} style={{ padding: "1px 7px", fontSize: 11 }}>
+                {releasedCount}/6
+              </span>
+            </button>
             <button className="btn sm" onClick={() => setEditModal(true)}>
               <Edit2 size={14} />
               Dados e acesso
@@ -3304,33 +5275,35 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
       )}
 
       {/* Abas do Prontuário */}
-      <div
-        className="row noprint"
-        style={{
-          background: "var(--soft)",
-          padding: 4,
-          borderRadius: 12,
-          gap: 4,
-          overflowX: "auto",
-        }}
-      >
-        {tabs.map(([k, l]) => (
-          <button
-            key={k}
-            type="button"
-            className="btn"
-            onClick={() => setTab(k)}
-            style={{
-              border: "none",
-              background: tab === k ? "var(--card)" : "transparent",
-              fontWeight: tab === k ? 700 : 500,
-              boxShadow: tab === k ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-            }}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
+      {!hideTopTabs && (
+        <div
+          className="row noprint"
+          style={{
+            background: "var(--soft)",
+            padding: 4,
+            borderRadius: 12,
+            gap: 4,
+            overflowX: "auto",
+          }}
+        >
+          {tabs.map(([k, l]) => (
+            <button
+              key={k}
+              type="button"
+              className="btn"
+              onClick={() => setTab(k)}
+              style={{
+                border: "none",
+                background: tab === k ? "var(--card)" : "transparent",
+                fontWeight: tab === k ? 700 : 500,
+                boxShadow: tab === k ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+              }}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* CABEÇALHO DO PACIENTE */}
       <div className="card hero" style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 20, alignItems: "center" }}>
@@ -3375,6 +5348,18 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
             {p.goal && <span className="chip warn">{p.goal}</span>}
             {p.medication && <span className="chip neu">{p.medication}</span>}
             <span className="chip neu num">Acompanhamento desde {fdate(ev[0]?.date || p.createdAt)}</span>
+            {!isReadOnly && (
+              <button
+                type="button"
+                className="btn sm"
+                onClick={() => setClinicalModal(true)}
+                style={{ fontSize: 11.5, padding: "3px 9px" }}
+                title="Editar medicação, restrição e observações clínicas"
+              >
+                <Edit2 size={12} />
+                Editar medicação / conduta
+              </button>
+            )}
           </div>
 
           {/* Próxima consulta no cabeçalho */}
@@ -3432,14 +5417,62 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
               {w.d < 0 ? `Perdeu ${fmt(Math.abs(w.d), 1)} kg` : w.d > 0 ? `Ganhou ${fmt(w.d, 1)} kg` : "Estável"}
             </span>
           )}
+          {!isReadOnly && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn sm noprint"
+                onClick={() => setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+                style={{ fontSize: 11.5, padding: "4px 10px" }}
+              >
+                <Edit2 size={12} />
+                Editar peso / medidas
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* BARRA DE EDIÇÃO DOS INDICADORES (apenas admin) */}
+      {!isReadOnly && (
+        <div className="row noprint" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: -8 }}>
+          <span className="mute" style={{ fontSize: 12, fontWeight: 600 }}>
+            Indicadores corporais (clique em qualquer card para editar ou registrar nova avaliação)
+          </span>
+          <div className="row" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+            >
+              <SlidersHorizontal size={14} />
+              Editar indicadores
+            </button>
+            <button
+              type="button"
+              className="btn sm gold"
+              onClick={() => setEvalModal({ mode: "create" })}
+            >
+              <Plus size={14} />
+              Nova avaliação
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 8. CARDS DE INDICADORES (7 colunas iguais no desktop) */}
       <div className="patient-kpis-grid">
         {/* Variação de peso */}
-        <div className="patient-kpi-card">
-          <div className="patient-kpi-title">Variação de peso</div>
+        <div
+          className="patient-kpi-card"
+          onClick={() => !isReadOnly && setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+          style={!isReadOnly ? { cursor: "pointer" } : undefined}
+          title={!isReadOnly ? "Clique para editar avaliações de peso" : undefined}
+        >
+          <div className="patient-kpi-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+            <span>Variação de peso</span>
+            {!isReadOnly && <Edit2 size={11} style={{ color: "var(--gold)", flexShrink: 0 }} />}
+          </div>
           <div className="patient-kpi-value">
             {w && w.n > 1 ? (w.d > 0 ? "+" : "") + fmt(w.d, 1) : "—"}
             <span className="patient-kpi-unit">kg</span>
@@ -3454,8 +5487,16 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
         </div>
 
         {/* Massa de gordura */}
-        <div className="patient-kpi-card">
-          <div className="patient-kpi-title">Massa de gordura</div>
+        <div
+          className="patient-kpi-card"
+          onClick={() => !isReadOnly && setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+          style={!isReadOnly ? { cursor: "pointer" } : undefined}
+          title={!isReadOnly ? "Clique para editar massa de gordura" : undefined}
+        >
+          <div className="patient-kpi-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+            <span>Massa de gordura</span>
+            {!isReadOnly && <Edit2 size={11} style={{ color: "var(--gold)", flexShrink: 0 }} />}
+          </div>
           <div className="patient-kpi-value">
             {fatKg ? fmt(fatKg.last.fatKg, 1) : "—"}
             <span className="patient-kpi-unit">kg</span>
@@ -3472,8 +5513,16 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
         </div>
 
         {/* % de gordura */}
-        <div className="patient-kpi-card">
-          <div className="patient-kpi-title">% de gordura</div>
+        <div
+          className="patient-kpi-card"
+          onClick={() => !isReadOnly && setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+          style={!isReadOnly ? { cursor: "pointer" } : undefined}
+          title={!isReadOnly ? "Clique para editar % de gordura" : undefined}
+        >
+          <div className="patient-kpi-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+            <span>% de gordura</span>
+            {!isReadOnly && <Edit2 size={11} style={{ color: "var(--gold)", flexShrink: 0 }} />}
+          </div>
           <div className="patient-kpi-value">
             {fatPct ? fmt(fatPct.last.fatPct, 1) : "—"}
             <span className="patient-kpi-unit">%</span>
@@ -3488,8 +5537,16 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
         </div>
 
         {/* Massa muscular */}
-        <div className="patient-kpi-card">
-          <div className="patient-kpi-title">Massa muscular</div>
+        <div
+          className="patient-kpi-card"
+          onClick={() => !isReadOnly && setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+          style={!isReadOnly ? { cursor: "pointer" } : undefined}
+          title={!isReadOnly ? "Clique para editar massa muscular" : undefined}
+        >
+          <div className="patient-kpi-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+            <span>Massa muscular</span>
+            {!isReadOnly && <Edit2 size={11} style={{ color: "var(--gold)", flexShrink: 0 }} />}
+          </div>
           <div className="patient-kpi-value">
             {musc ? fmt(musc.last.muscleKg, 1) : "—"}
             <span className="patient-kpi-unit">kg</span>
@@ -3506,8 +5563,16 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
         </div>
 
         {/* Massa magra (antigo massa livre de gordura) */}
-        <div className="patient-kpi-card">
-          <div className="patient-kpi-title">Massa magra</div>
+        <div
+          className="patient-kpi-card"
+          onClick={() => !isReadOnly && setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+          style={!isReadOnly ? { cursor: "pointer" } : undefined}
+          title={!isReadOnly ? "Clique para editar massa magra" : undefined}
+        >
+          <div className="patient-kpi-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+            <span>Massa magra</span>
+            {!isReadOnly && <Edit2 size={11} style={{ color: "var(--gold)", flexShrink: 0 }} />}
+          </div>
           <div className="patient-kpi-value">
             {lean ? fmt(lean.last.leanKg, 1) : "—"}
             <span className="patient-kpi-unit">kg</span>
@@ -3524,8 +5589,16 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
         </div>
 
         {/* Gordura visceral */}
-        <div className="patient-kpi-card">
-          <div className="patient-kpi-title">Gordura visceral</div>
+        <div
+          className="patient-kpi-card"
+          onClick={() => !isReadOnly && setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+          style={!isReadOnly ? { cursor: "pointer" } : undefined}
+          title={!isReadOnly ? "Clique para editar gordura visceral" : undefined}
+        >
+          <div className="patient-kpi-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+            <span>Gordura visceral</span>
+            {!isReadOnly && <Edit2 size={11} style={{ color: "var(--gold)", flexShrink: 0 }} />}
+          </div>
           <div className="patient-kpi-value">
             {visc ? fmt(visc.last.visceral, 0) : "—"}
             <span className="patient-kpi-unit">pts</span>
@@ -3542,8 +5615,16 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
         </div>
 
         {/* IMC */}
-        <div className="patient-kpi-card">
-          <div className="patient-kpi-title">IMC</div>
+        <div
+          className="patient-kpi-card"
+          onClick={() => !isReadOnly && setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+          style={!isReadOnly ? { cursor: "pointer" } : undefined}
+          title={!isReadOnly ? "Clique para editar altura/peso e atualizar o IMC" : undefined}
+        >
+          <div className="patient-kpi-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+            <span>IMC</span>
+            {!isReadOnly && <Edit2 size={11} style={{ color: "var(--gold)", flexShrink: 0 }} />}
+          </div>
           <div className="patient-kpi-value">
             {bmi ? fmt(bmi, 1) : "—"}
             <span className="patient-kpi-unit">kg/m²</span>
@@ -3567,10 +5648,24 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
         <div style={{ display: "grid", gap: 18 }}>
           <div className="grid g2">
             <div className="card">
-              <h3>Evolução do peso</h3>
-              <p className="mute num" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
-                {ev.length} avaliação(ões) registrada(s)
-              </p>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                <div>
+                  <h3>Evolução do peso</h3>
+                  <p className="mute num" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
+                    {ev.length} avaliação(ões) registrada(s)
+                  </p>
+                </div>
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    className="btn sm noprint"
+                    onClick={() => setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+                  >
+                    <Edit2 size={13} />
+                    Editar dados
+                  </button>
+                )}
+              </div>
               <LineChart
                 unit=" kg"
                 series={[
@@ -3584,10 +5679,24 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
             </div>
 
             <div className="card">
-              <h3>Composição corporal</h3>
-              <p className="mute" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
-                Gordura vs. Massa Magra (kg)
-              </p>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                <div>
+                  <h3>Composição corporal</h3>
+                  <p className="mute" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
+                    Gordura vs. Massa Magra (kg)
+                  </p>
+                </div>
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    className="btn sm noprint"
+                    onClick={() => setEvalModal({ mode: last ? "edit" : "create", evalId: last?.id })}
+                  >
+                    <Edit2 size={13} />
+                    Editar dados
+                  </button>
+                )}
+              </div>
               <LineChart
                 unit=" kg"
                 series={[
@@ -3609,7 +5718,15 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
           {/* Fotos e Exames */}
           <div className="grid g2">
             <div className="card">
-              <h3>Fotos de evolução</h3>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <h3>Fotos de evolução</h3>
+                {!isReadOnly && (
+                  <button type="button" className="btn sm noprint" onClick={() => setTab("fotos")}>
+                    <Camera size={13} />
+                    Gerenciar fotos
+                  </button>
+                )}
+              </div>
               {pics.length ? (
                 <div
                   style={{
@@ -3648,7 +5765,15 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
             </div>
 
             <div className="card">
-              <h3>Exames laboratoriais recentes</h3>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <h3>Exames laboratoriais recentes</h3>
+                {!isReadOnly && (
+                  <button type="button" className="btn sm noprint" onClick={() => setTab("exames")}>
+                    <Edit2 size={13} />
+                    Gerenciar exames
+                  </button>
+                )}
+              </div>
               {lastLab ? (
                 <>
                   <p className="mute num" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
@@ -3705,28 +5830,48 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
           {/* Histórico de avaliações e Tratamento/condutas clínicas */}
           <div className="grid g2">
             <div className="card" style={{ overflow: "hidden" }}>
-              <h3>Histórico de avaliações</h3>
-              <p className="mute num" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
-                {ev.length} bioimpedância(s) registrada(s)
-              </p>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                <div>
+                  <h3>Histórico de avaliações</h3>
+                  <p className="mute num" style={{ margin: "2px 0 10px", fontSize: 12.5 }}>
+                    {ev.length} bioimpedância(s) registrada(s)
+                  </p>
+                </div>
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    className="btn sm gold noprint"
+                    onClick={() => setEvalModal({ mode: "create" })}
+                  >
+                    <Plus size={13} />
+                    Nova
+                  </button>
+                )}
+              </div>
               <div style={{ width: "100%", overflowX: "hidden" }}>
                 <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      <th style={{ width: "18%", padding: "8px 4px", fontSize: 11 }}>Data</th>
-                      <th style={{ width: "15%", padding: "8px 4px", fontSize: 11 }}>Peso</th>
-                      <th style={{ width: "13%", padding: "8px 4px", fontSize: 11 }}>% Gord.</th>
+                      <th style={{ width: "17%", padding: "8px 4px", fontSize: 11 }}>Data</th>
+                      <th style={{ width: "14%", padding: "8px 4px", fontSize: 11 }}>Peso</th>
+                      <th style={{ width: "12%", padding: "8px 4px", fontSize: 11 }}>% Gord.</th>
                       <th style={{ width: "13%", padding: "8px 4px", fontSize: 11 }}>Gord. kg</th>
-                      <th style={{ width: "16%", padding: "8px 4px", fontSize: 11 }}>Massa magra</th>
-                      <th style={{ width: "14%", padding: "8px 4px", fontSize: 11 }}>Músculo</th>
-                      <th style={{ width: "11%", padding: "8px 4px", fontSize: 11 }}>Visceral</th>
+                      <th style={{ width: "15%", padding: "8px 4px", fontSize: 11 }}>Massa magra</th>
+                      <th style={{ width: "13%", padding: "8px 4px", fontSize: 11 }}>Músculo</th>
+                      <th style={{ width: "9%", padding: "8px 4px", fontSize: 11 }}>Visc.</th>
+                      {!isReadOnly && <th style={{ width: "7%", padding: "8px 2px", fontSize: 11 }} />}
                     </tr>
                   </thead>
                   <tbody>
                     {sorted(p.evaluations)
                       .reverse()
                       .map((e: any) => (
-                        <tr key={e.id} title={e.note ? `Observação: ${e.note}` : undefined}>
+                        <tr
+                          key={e.id}
+                          title={!isReadOnly ? "Clique para editar esta avaliação" : e.note ? `Observação: ${e.note}` : undefined}
+                          className={!isReadOnly ? "tr-click" : undefined}
+                          onClick={() => !isReadOnly && setEvalModal({ mode: "edit", evalId: e.id })}
+                        >
                           <td className="num" style={{ padding: "8px 4px", fontSize: 11.5 }}>{fdate(e.date)}</td>
                           <td className="num" style={{ padding: "8px 4px", fontSize: 11.5 }}><b>{fmt(e.weight, 1)} kg</b></td>
                           <td className="num" style={{ padding: "8px 4px", fontSize: 11.5 }}>{fmt(e.fatPct, 1)}%</td>
@@ -3734,6 +5879,22 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
                           <td className="num" style={{ padding: "8px 4px", fontSize: 11.5 }}>{fmt(e.leanKg, 1)} kg</td>
                           <td className="num" style={{ padding: "8px 4px", fontSize: 11.5 }}>{fmt(e.muscleKg, 1)} kg</td>
                           <td className="num" style={{ padding: "8px 4px", fontSize: 11.5 }}>{fmt(e.visceral, 0)}</td>
+                          {!isReadOnly && (
+                            <td style={{ padding: "6px 2px", textAlign: "right" }}>
+                              <button
+                                type="button"
+                                className="btn sm"
+                                style={{ padding: "3px 6px" }}
+                                onClick={(evClick) => {
+                                  evClick.stopPropagation();
+                                  setEvalModal({ mode: "edit", evalId: e.id });
+                                }}
+                                aria-label="Editar avaliação"
+                              >
+                                <Edit2 size={11} />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                   </tbody>
@@ -3742,7 +5903,19 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
             </div>
 
             <div className="card">
-              <h3>Tratamento e observações</h3>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <h3>Tratamento e observações</h3>
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    className="btn sm noprint"
+                    onClick={() => setClinicalModal(true)}
+                  >
+                    <Edit2 size={13} />
+                    Editar
+                  </button>
+                )}
+              </div>
               {p.meds?.length ? (
                 <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                   {sorted(p.meds)
@@ -3772,13 +5945,23 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
       {/* TAB 2: COMPARATIVO DE AVALIAÇÕES (1 coluna por data com diferenças) */}
       {tab === "comparativo" && (
         <div className="card">
-          <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
+          <div className="row" style={{ justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
             <div>
               <h2>Comparativo de avaliações</h2>
               <p className="mute" style={{ margin: "2px 0 0", fontSize: 12.5 }}>
                 Evolução calculada avaliação a avaliação (verde = melhorou, vermelho = piorou).
               </p>
             </div>
+            {!isReadOnly && (
+              <button
+                type="button"
+                className="btn sm gold noprint"
+                onClick={() => setEvalModal({ mode: "create" })}
+              >
+                <Plus size={14} />
+                Nova avaliação
+              </button>
+            )}
           </div>
 
           <div className="tscroll">
@@ -3788,7 +5971,20 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
                   <th style={{ minWidth: 200 }}>Métrica</th>
                   {ev.map((e: any, idx: number) => (
                     <th key={e.id} style={{ minWidth: 130, textAlign: "center" }} className="num">
-                      {fdate(e.date)}
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <span>{fdate(e.date)}</span>
+                        {!isReadOnly && (
+                          <button
+                            type="button"
+                            className="btn sm noprint"
+                            style={{ padding: "2px 5px" }}
+                            onClick={() => setEvalModal({ mode: "edit", evalId: e.id })}
+                            title="Editar avaliação desta data"
+                          >
+                            <Edit2 size={11} />
+                          </button>
+                        )}
+                      </div>
                       <div className="mute" style={{ fontSize: 10.5, fontWeight: 500, textTransform: "none" }}>
                         {idx === 0 ? "Avaliação inicial" : `${idx + 1}ª avaliação`}
                       </div>
@@ -4114,7 +6310,12 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
 
       {/* TAB 3: AVALIAÇÕES (Formulário + Histórico) */}
       {tab === "avaliacoes" && (
-        <PatientEvaluationsTab p={p} update={update} isReadOnly={isReadOnly} />
+        <PatientEvaluationsTab
+          p={p}
+          update={update}
+          isReadOnly={isReadOnly}
+          onEditEval={(evalId: string) => setEvalModal({ mode: "edit", evalId })}
+        />
       )}
 
       {/* TAB 4: EXAMES */}
@@ -4132,6 +6333,16 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
         <PatientTreatmentTab p={p} update={update} isReadOnly={isReadOnly} />
       )}
 
+      {/* TAB 7: PROTOCOLO & FINANÇAS */}
+      {tab === "protocolo" && (
+        <PatientProtocolTab
+          patient={p}
+          db={db}
+          setDB={setDB}
+          isReadOnly={isReadOnly}
+        />
+      )}
+
       {/* MODAL DE EDIÇÃO DE DADOS E ACESSO */}
       {editModal && (
         <PatientEditModal
@@ -4144,6 +6355,37 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
           }}
         />
       )}
+
+      {/* MODAL DE PERMISSÕES DO PORTAL DO PACIENTE */}
+      {permsModal && (
+        <PortalPermissionsModal
+          patient={p}
+          db={db}
+          setDB={setDB}
+          update={update}
+          onClose={() => setPermsModal(false)}
+        />
+      )}
+
+      {/* MODAL DE EDIÇÃO DE INDICADORES & AVALIAÇÕES */}
+      {evalModal && (
+        <EvaluationEditModal
+          patient={p}
+          initialMode={evalModal.mode}
+          initialEvalId={evalModal.evalId}
+          update={update}
+          onClose={() => setEvalModal(null)}
+        />
+      )}
+
+      {/* MODAL DE EDIÇÃO CLÍNICA (MEDICAÇÕES, RESTRIÇÕES & CONDUTAS) */}
+      {clinicalModal && (
+        <TreatmentClinicalModal
+          patient={p}
+          update={update}
+          onClose={() => setClinicalModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -4151,11 +6393,12 @@ function PatientRecord({ p, db, update, remove, back, onOpenBookingModal, isRead
 // ---------------------------------------------------------------------
 // SUB-ABAS DA FICHA (AVALIAÇÕES, EXAMES, FOTOS, TRATAMENTO, MODAL)
 // ---------------------------------------------------------------------
-function PatientEvaluationsTab({ p, update, isReadOnly = false }: any) {
+function PatientEvaluationsTab({ p, update, isReadOnly = false, onEditEval }: any) {
   const [date, setDate] = useState(today());
   const [weight, setWeight] = useState("");
   const [fatPct, setFatPct] = useState("");
   const [fatKg, setFatKg] = useState("");
+  const [leanKg, setLeanKg] = useState("");
   const [muscleKg, setMuscleKg] = useState("");
   const [visceral, setVisceral] = useState("");
   const [note, setNote] = useState("");
@@ -4166,6 +6409,8 @@ function PatientEvaluationsTab({ p, update, isReadOnly = false }: any) {
     const fp = num(fatPct.replace(",", "."));
     let fk = num(fatKg.replace(",", "."));
     if (fk === null && fp !== null) fk = +(w * fp / 100).toFixed(1);
+    let lk = num(leanKg.replace(",", "."));
+    if (lk === null && fk !== null) lk = +(w - fk).toFixed(1);
 
     const newEval = {
       id: uid(),
@@ -4173,7 +6418,7 @@ function PatientEvaluationsTab({ p, update, isReadOnly = false }: any) {
       weight: w,
       fatPct: fp,
       fatKg: fk,
-      leanKg: fk !== null ? +(w - fk).toFixed(1) : null,
+      leanKg: lk,
       muscleKg: num(muscleKg.replace(",", ".")),
       visceral: num(visceral),
       note,
@@ -4183,6 +6428,7 @@ function PatientEvaluationsTab({ p, update, isReadOnly = false }: any) {
     setWeight("");
     setFatPct("");
     setFatKg("");
+    setLeanKg("");
     setMuscleKg("");
     setVisceral("");
     setNote("");
@@ -4209,6 +6455,10 @@ function PatientEvaluationsTab({ p, update, isReadOnly = false }: any) {
             <div>
               <label>Massa de gordura (kg)</label>
               <input value={fatKg} onChange={(e) => setFatKg(e.target.value)} placeholder="Auto se % preenchido" />
+            </div>
+            <div>
+              <label>Massa magra (kg)</label>
+              <input value={leanKg} onChange={(e) => setLeanKg(e.target.value)} placeholder="Auto se gordura preenchida" />
             </div>
             <div>
               <label>Massa muscular (kg)</label>
@@ -4242,7 +6492,7 @@ function PatientEvaluationsTab({ p, update, isReadOnly = false }: any) {
               <th>Músculo kg</th>
               <th>Visceral</th>
               <th>Obs.</th>
-              {!isReadOnly && <th></th>}
+              {!isReadOnly && <th style={{ textAlign: "right" }}>Ações</th>}
             </tr>
           </thead>
           <tbody>
@@ -4259,16 +6509,29 @@ function PatientEvaluationsTab({ p, update, isReadOnly = false }: any) {
                   <td className="num">{fmt(e.visceral, 0)}</td>
                   <td className="mute">{e.note || "—"}</td>
                   {!isReadOnly && (
-                    <td>
-                      <button
-                        className="btn sm danger"
-                        onClick={() =>
-                          confirm("Remover esta avaliação?") &&
-                          update({ ...p, evaluations: p.evaluations.filter((x: any) => x.id !== e.id) })
-                        }
-                      >
-                        Remover
-                      </button>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <div className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+                        {onEditEval && (
+                          <button
+                            type="button"
+                            className="btn sm"
+                            onClick={() => onEditEval(e.id)}
+                          >
+                            <Edit2 size={12} />
+                            Editar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn sm danger"
+                          onClick={() =>
+                            confirm("Remover esta avaliação?") &&
+                            update({ ...p, evaluations: p.evaluations.filter((x: any) => x.id !== e.id) })
+                          }
+                        >
+                          Remover
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -4287,6 +6550,9 @@ function PatientLabsTab({ p, update, isReadOnly = false }: any) {
   const [unit, setUnit] = useState("");
   const [min, setMin] = useState("");
   const [max, setMax] = useState("");
+
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingGroupDate, setEditingGroupDate] = useState<{ groupId: string; date: string } | null>(null);
 
   function addLab() {
     if (!name || value === "") return alert("Informe o nome do exame e o resultado.");
@@ -4315,6 +6581,42 @@ function PatientLabsTab({ p, update, isReadOnly = false }: any) {
     setUnit("");
     setMin("");
     setMax("");
+  }
+
+  function saveEditedLabItem() {
+    if (!editingItem) return;
+    if (!editingItem.name.trim() || editingItem.value === "") {
+      return alert("Informe o nome e o resultado do exame.");
+    }
+    const parsedVal = num(String(editingItem.value).replace(",", "."));
+    const updatedItem = {
+      id: editingItem.itemId,
+      name: editingItem.name.trim(),
+      value: parsedVal === null ? editingItem.value : parsedVal,
+      unit: editingItem.unit,
+      min: num(String(editingItem.min).replace(",", ".")),
+      max: num(String(editingItem.max).replace(",", ".")),
+    };
+    update({
+      ...p,
+      labs: p.labs.map((lg: any) =>
+        lg.id === editingItem.groupId
+          ? { ...lg, items: lg.items.map((it: any) => (it.id === editingItem.itemId ? updatedItem : it)) }
+          : lg
+      ),
+    });
+    setEditingItem(null);
+  }
+
+  function saveEditedGroupDate() {
+    if (!editingGroupDate || !editingGroupDate.date) return;
+    update({
+      ...p,
+      labs: p.labs.map((lg: any) =>
+        lg.id === editingGroupDate.groupId ? { ...lg, date: editingGroupDate.date } : lg
+      ),
+    });
+    setEditingGroupDate(null);
   }
 
   return (
@@ -4358,8 +6660,38 @@ function PatientLabsTab({ p, update, isReadOnly = false }: any) {
         .reverse()
         .map((g: any) => (
           <div key={g.id} className="card">
-            <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-              <h3>Coleta de {fdate(g.date)}</h3>
+            <div className="row" style={{ justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              {editingGroupDate?.groupId === g.id ? (
+                <div className="row" style={{ gap: 8 }}>
+                  <input
+                    type="date"
+                    value={editingGroupDate.date}
+                    onChange={(e) => setEditingGroupDate({ ...editingGroupDate, date: e.target.value })}
+                    style={{ width: 155 }}
+                  />
+                  <button type="button" className="btn sm gold" onClick={saveEditedGroupDate}>
+                    Salvar data
+                  </button>
+                  <button type="button" className="btn sm" onClick={() => setEditingGroupDate(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <div className="row" style={{ gap: 8 }}>
+                  <h3>Coleta de {fdate(g.date)}</h3>
+                  {!isReadOnly && (
+                    <button
+                      type="button"
+                      className="btn sm"
+                      onClick={() => setEditingGroupDate({ groupId: g.id, date: g.date })}
+                      title="Alterar data da coleta"
+                    >
+                      <Edit2 size={12} />
+                    </button>
+                  )}
+                </div>
+              )}
+
               {!isReadOnly && (
                 <button
                   className="btn sm danger"
@@ -4380,12 +6712,72 @@ function PatientLabsTab({ p, update, isReadOnly = false }: any) {
                     <th>Resultado</th>
                     <th>Referência</th>
                     <th>Status</th>
-                    {!isReadOnly && <th></th>}
+                    {!isReadOnly && <th style={{ textAlign: "right" }}>Ações</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {g.items.map((i: any) => {
                     const st = labStatus(i);
+                    const isEditingThis = editingItem?.groupId === g.id && editingItem?.itemId === i.id;
+                    if (isEditingThis) {
+                      return (
+                        <tr key={i.id} style={{ background: "var(--soft)" }}>
+                          <td>
+                            <input
+                              value={editingItem.name}
+                              onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
+                              style={{ minWidth: 120, padding: "6px 8px" }}
+                            />
+                          </td>
+                          <td>
+                            <div className="row" style={{ gap: 6 }}>
+                              <input
+                                value={editingItem.value}
+                                onChange={(e) => setEditingItem({ ...editingItem, value: e.target.value })}
+                                style={{ width: 76, padding: "6px 8px" }}
+                              />
+                              <input
+                                value={editingItem.unit}
+                                onChange={(e) => setEditingItem({ ...editingItem, unit: e.target.value })}
+                                placeholder="unid."
+                                style={{ width: 68, padding: "6px 8px" }}
+                              />
+                            </div>
+                          </td>
+                          <td>
+                            <div className="row" style={{ gap: 4 }}>
+                              <input
+                                value={editingItem.min}
+                                onChange={(e) => setEditingItem({ ...editingItem, min: e.target.value })}
+                                placeholder="min"
+                                style={{ width: 58, padding: "6px 8px" }}
+                              />
+                              <span>–</span>
+                              <input
+                                value={editingItem.max}
+                                onChange={(e) => setEditingItem({ ...editingItem, max: e.target.value })}
+                                placeholder="max"
+                                style={{ width: 58, padding: "6px 8px" }}
+                              />
+                            </div>
+                          </td>
+                          <td>
+                            <span className="mute" style={{ fontSize: 11.5 }}>Editando</span>
+                          </td>
+                          <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                            <div className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+                              <button type="button" className="btn sm gold" onClick={saveEditedLabItem}>
+                                <Check size={12} /> Salvar
+                              </button>
+                              <button type="button" className="btn sm" onClick={() => setEditingItem(null)}>
+                                Cancelar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     return (
                       <tr key={i.id}>
                         <td>{i.name}</td>
@@ -4399,20 +6791,42 @@ function PatientLabsTab({ p, update, isReadOnly = false }: any) {
                           </span>
                         </td>
                         {!isReadOnly && (
-                          <td>
-                            <button
-                              className="btn sm danger"
-                              onClick={() =>
-                                update({
-                                  ...p,
-                                  labs: p.labs.map((lg: any) =>
-                                    lg.id === g.id ? { ...lg, items: lg.items.filter((it: any) => it.id !== i.id) } : lg
-                                  ),
-                                })
-                              }
-                            >
-                              ✕
-                            </button>
+                          <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                            <div className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+                              <button
+                                type="button"
+                                className="btn sm"
+                                onClick={() =>
+                                  setEditingItem({
+                                    groupId: g.id,
+                                    itemId: i.id,
+                                    name: i.name || "",
+                                    value: i.value !== null && i.value !== undefined ? String(i.value) : "",
+                                    unit: i.unit || "",
+                                    min: i.min !== null && i.min !== undefined ? String(i.min) : "",
+                                    max: i.max !== null && i.max !== undefined ? String(i.max) : "",
+                                  })
+                                }
+                                title="Editar exame"
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn sm danger"
+                                onClick={() =>
+                                  update({
+                                    ...p,
+                                    labs: p.labs.map((lg: any) =>
+                                      lg.id === g.id ? { ...lg, items: lg.items.filter((it: any) => it.id !== i.id) } : lg
+                                    ),
+                                  })
+                                }
+                                title="Remover exame"
+                              >
+                                ✕
+                              </button>
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -4430,6 +6844,7 @@ function PatientLabsTab({ p, update, isReadOnly = false }: any) {
 function PatientPhotosTab({ p, update, isReadOnly = false }: any) {
   const [photoDate, setPhotoDate] = useState(today());
   const [uploading, setUploading] = useState(false);
+  const [editingPhoto, setEditingPhoto] = useState<{ id: string; date: string; label: string } | null>(null);
 
   async function handleAdd(files: FileList | null) {
     if (!files || !files.length) return;
@@ -4445,9 +6860,20 @@ function PatientPhotosTab({ p, update, isReadOnly = false }: any) {
     }
   }
 
+  function savePhotoEdit() {
+    if (!editingPhoto) return;
+    update({
+      ...p,
+      photos: p.photos.map((ph: any) =>
+        ph.id === editingPhoto.id ? { ...ph, date: editingPhoto.date, label: editingPhoto.label } : ph
+      ),
+    });
+    setEditingPhoto(null);
+  }
+
   return (
     <div className="card">
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <h3>Fotos de evolução</h3>
         {!isReadOnly && (
           <div className="row" style={{ gap: 8 }}>
@@ -4461,33 +6887,83 @@ function PatientPhotosTab({ p, update, isReadOnly = false }: any) {
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
-        {sorted(p.photos).map((ph: any) => (
-          <div key={ph.id} style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: "1px solid var(--line)" }}>
-            <img src={ph.src} alt="" style={{ width: "100%", aspectRatio: "3/4", objectFit: "cover", display: "block" }} />
-            <div
-              style={{
-                padding: "6px 8px",
-                background: "var(--card)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <span className="num mute" style={{ fontSize: 11 }}>
-                {fdate(ph.date)}
-              </span>
-              {!isReadOnly && (
-                <button
-                  className="btn sm danger"
-                  onClick={() => update({ ...p, photos: p.photos.filter((x: any) => x.id !== ph.id) })}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
+        {sorted(p.photos).map((ph: any) => {
+          const isEditing = editingPhoto?.id === ph.id;
+          return (
+            <div key={ph.id} style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: "1px solid var(--line)", background: "var(--card)" }}>
+              <img src={ph.src} alt="" style={{ width: "100%", aspectRatio: "3/4", objectFit: "cover", display: "block" }} />
+              {isEditing ? (
+                <div style={{ padding: 8, display: "grid", gap: 6 }}>
+                  <input
+                    type="date"
+                    value={editingPhoto.date}
+                    onChange={(e) => setEditingPhoto({ ...editingPhoto, date: e.target.value })}
+                    style={{ padding: "4px 6px", fontSize: 12 }}
+                  />
+                  <input
+                    value={editingPhoto.label}
+                    onChange={(e) => setEditingPhoto({ ...editingPhoto, label: e.target.value })}
+                    placeholder="Legenda (ex.: Frente)"
+                    style={{ padding: "4px 6px", fontSize: 12 }}
+                  />
+                  <div className="row" style={{ gap: 6 }}>
+                    <button type="button" className="btn sm gold" onClick={savePhotoEdit} style={{ flex: 1 }}>
+                      Salvar
+                    </button>
+                    <button type="button" className="btn sm" onClick={() => setEditingPhoto(null)}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    padding: "6px 8px",
+                    background: "var(--card)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
                 >
-                  ✕
-                </button>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="num mute" style={{ fontSize: 11 }}>
+                      {fdate(ph.date)}
+                    </div>
+                    {ph.label && (
+                      <div style={{ fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {ph.label}
+                      </div>
+                    )}
+                  </div>
+                  {!isReadOnly && (
+                    <div className="row" style={{ gap: 4 }}>
+                      <button
+                        type="button"
+                        className="btn sm"
+                        style={{ padding: "3px 6px" }}
+                        onClick={() => setEditingPhoto({ id: ph.id, date: ph.date || today(), label: ph.label || "" })}
+                        title="Editar data/legenda"
+                      >
+                        <Edit2 size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm danger"
+                        style={{ padding: "3px 6px" }}
+                        onClick={() => update({ ...p, photos: p.photos.filter((x: any) => x.id !== ph.id) })}
+                        title="Remover foto"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -4496,16 +6972,108 @@ function PatientPhotosTab({ p, update, isReadOnly = false }: any) {
 function PatientTreatmentTab({ p, update, isReadOnly = false }: any) {
   const [date, setDate] = useState(today());
   const [text, setText] = useState("");
+  const [medication, setMedication] = useState(p.medication || "");
+  const [restriction, setRestriction] = useState(p.restriction || "");
+  const [injury, setInjury] = useState(p.injury || "");
+  const [notes, setNotes] = useState(p.notes || "");
+  const [savedSummary, setSavedSummary] = useState(false);
+  const [editingMed, setEditingMed] = useState<{ id: string; date: string; text: string } | null>(null);
+
+  useEffect(() => {
+    setMedication(p.medication || "");
+    setRestriction(p.restriction || "");
+    setInjury(p.injury || "");
+    setNotes(p.notes || "");
+  }, [p.id, p.medication, p.restriction, p.injury, p.notes]);
 
   function addMed() {
     if (!text.trim()) return;
-    const item = { id: uid(), date, text };
+    const item = { id: uid(), date, text: text.trim() };
     update({ ...p, meds: [...(p.meds || []), item] });
     setText("");
   }
 
+  function saveClinicalSummary() {
+    update({
+      ...p,
+      medication: medication.trim(),
+      restriction: restriction.trim(),
+      injury: injury.trim(),
+      notes: notes.trim(),
+    });
+    setSavedSummary(true);
+    setTimeout(() => setSavedSummary(false), 2000);
+  }
+
+  function saveEditedMed() {
+    if (!editingMed || !editingMed.text.trim()) return;
+    update({
+      ...p,
+      meds: (p.meds || []).map((m: any) =>
+        m.id === editingMed.id ? { ...m, date: editingMed.date, text: editingMed.text.trim() } : m
+      ),
+    });
+    setEditingMed(null);
+  }
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {!isReadOnly ? (
+        <div className="card">
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <h3>Resumo clínico e medicação em uso</h3>
+            {savedSummary && <span className="chip good">Salvo</span>}
+          </div>
+          <div className="form">
+            <div>
+              <label>Medicação principal (exibida no cabeçalho)</label>
+              <input
+                value={medication}
+                onChange={(e) => setMedication(e.target.value)}
+                placeholder="Ex.: Tirzepatida 5 mg/semana"
+              />
+            </div>
+            <div>
+              <label>Restrição alimentar</label>
+              <input
+                value={restriction}
+                onChange={(e) => setRestriction(e.target.value)}
+                placeholder="Ex.: Sem lactose, baixa carga glicêmica..."
+              />
+            </div>
+            <div>
+              <label>Lesão / limitação física</label>
+              <input
+                value={injury}
+                onChange={(e) => setInjury(e.target.value)}
+                placeholder="Ex.: Condromalácia patelar..."
+              />
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
+              <label>Observações clínicas gerais</label>
+              <input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Notas sobre adesão, tolerância, orientações..."
+              />
+            </div>
+          </div>
+          <button type="button" className="btn gold" onClick={saveClinicalSummary} style={{ marginTop: 14 }}>
+            Salvar resumo clínico
+          </button>
+        </div>
+      ) : (
+        (p.medication || p.restriction || p.injury || p.notes) && (
+          <div className="card" style={{ display: "grid", gap: 8 }}>
+            <h3>Resumo clínico atual</h3>
+            {p.medication && <div><b>Medicação em uso:</b> {p.medication}</div>}
+            {p.restriction && <div><b>Restrição alimentar:</b> {p.restriction}</div>}
+            {p.injury && <div><b>Lesão/limitação:</b> {p.injury}</div>}
+            {p.notes && <div className="mute">{p.notes}</div>}
+          </div>
+        )
+      )}
+
       {!isReadOnly && (
         <div className="card">
           <h3>Prescrição e registro de condutas</h3>
@@ -4530,34 +7098,95 @@ function PatientTreatmentTab({ p, update, isReadOnly = false }: any) {
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
           {sorted(p.meds || [])
             .reverse()
-            .map((m: any) => (
-              <div
-                key={m.id}
-                className="row"
-                style={{
-                  justifyContent: "space-between",
-                  padding: "10px 14px",
-                  border: "1px solid var(--line)",
-                  borderRadius: 10,
-                  background: "var(--soft)",
-                }}
-              >
-                <div>
-                  <b className="num" style={{ color: "var(--gold)" }}>
-                    {fdate(m.date)}:
-                  </b>{" "}
-                  <span>{m.text}</span>
-                </div>
-                {!isReadOnly && (
-                  <button
-                    className="btn sm danger"
-                    onClick={() => update({ ...p, meds: p.meds.filter((x: any) => x.id !== m.id) })}
+            .map((m: any) => {
+              const isEditing = editingMed?.id === m.id;
+              if (isEditing) {
+                return (
+                  <div
+                    key={m.id}
+                    style={{
+                      padding: "10px 14px",
+                      border: "1px solid var(--gold)",
+                      borderRadius: 10,
+                      background: "var(--soft)",
+                      display: "grid",
+                      gap: 10,
+                    }}
                   >
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
+                    <div className="form">
+                      <div>
+                        <label>Data</label>
+                        <input
+                          type="date"
+                          value={editingMed.date}
+                          onChange={(e) => setEditingMed({ ...editingMed, date: e.target.value })}
+                        />
+                      </div>
+                      <div style={{ gridColumn: "span 2" }}>
+                        <label>Descrição</label>
+                        <input
+                          value={editingMed.text}
+                          onChange={(e) => setEditingMed({ ...editingMed, text: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+                      <button type="button" className="btn sm" onClick={() => setEditingMed(null)}>
+                        Cancelar
+                      </button>
+                      <button type="button" className="btn sm gold" onClick={saveEditedMed}>
+                        <Check size={12} /> Salvar
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={m.id}
+                  className="row"
+                  style={{
+                    justifyContent: "space-between",
+                    padding: "10px 14px",
+                    border: "1px solid var(--line)",
+                    borderRadius: 10,
+                    background: "var(--soft)",
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <b className="num" style={{ color: "var(--gold)" }}>
+                      {fdate(m.date)}:
+                    </b>{" "}
+                    <span>{m.text}</span>
+                  </div>
+                  {!isReadOnly && (
+                    <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        className="btn sm"
+                        onClick={() => setEditingMed({ id: m.id, date: m.date, text: m.text })}
+                        title="Editar registro"
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm danger"
+                        onClick={() => update({ ...p, meds: p.meds.filter((x: any) => x.id !== m.id) })}
+                        title="Remover registro"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          {!(p.meds || []).length && (
+            <p className="mute" style={{ margin: 0 }}>Sem registros na linha do tempo.</p>
+          )}
         </div>
       </div>
     </div>
@@ -4571,6 +7200,10 @@ function PatientEditModal({ patient, db, onClose, onSave }: any) {
   const [phone, setPhone] = useState(patient.phone || "");
   const [height, setHeight] = useState(patient.height ? String(patient.height) : "");
   const [goal, setGoal] = useState(patient.goal || "Controle Metabólico / Emagrecimento");
+  const [medication, setMedication] = useState(patient.medication || "");
+  const [restriction, setRestriction] = useState(patient.restriction || "");
+  const [injury, setInjury] = useState(patient.injury || "");
+  const [notes, setNotes] = useState(patient.notes || "");
   const [username, setUsername] = useState(patient.username || "");
   const [newPass, setNewPass] = useState(patient.password || "123");
   const [err, setErr] = useState("");
@@ -4598,6 +7231,10 @@ function PatientEditModal({ patient, db, onClose, onSave }: any) {
       phone,
       height: num(height.replace(",", ".")),
       goal,
+      medication: medication.trim(),
+      restriction: restriction.trim(),
+      injury: injury.trim(),
+      notes: notes.trim(),
       username: user,
       password: pwd,
       passHash: await hash(pwd),
@@ -4608,7 +7245,7 @@ function PatientEditModal({ patient, db, onClose, onSave }: any) {
 
   return (
     <div className="modal" role="dialog" aria-modal="true">
-      <div className="card" style={{ maxWidth: 540 }}>
+      <div className="card" style={{ maxWidth: 620 }}>
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
           <h2>Dados e acesso ao portal</h2>
           <button className="btn sm" onClick={onClose}>
@@ -4644,6 +7281,22 @@ function PatientEditModal({ patient, db, onClose, onSave }: any) {
             <label>Objetivo</label>
             <input value={goal} onChange={(e) => setGoal(e.target.value)} />
           </div>
+          <div style={{ gridColumn: "1/-1" }}>
+            <label>Medicação principal</label>
+            <input value={medication} onChange={(e) => setMedication(e.target.value)} placeholder="Ex.: Metformina 500mg, Ômega 3" />
+          </div>
+          <div>
+            <label>Restrição alimentar</label>
+            <input value={restriction} onChange={(e) => setRestriction(e.target.value)} />
+          </div>
+          <div>
+            <label>Lesão / limitação</label>
+            <input value={injury} onChange={(e) => setInjury(e.target.value)} />
+          </div>
+          <div style={{ gridColumn: "1/-1" }}>
+            <label>Observações clínicas</label>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
 
           <div style={{ gridColumn: "1/-1", marginTop: 8 }}>
             <h3 style={{ fontSize: 16, marginBottom: 6 }}>Acesso ao portal</h3>
@@ -4671,6 +7324,567 @@ function PatientEditModal({ patient, db, onClose, onSave }: any) {
             Cancelar
           </button>
           <button className="btn gold" onClick={handleSave}>
+            Salvar alterações
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// MODAL: PERMISSÕES DE VISUALIZAÇÃO DO PORTAL DO PACIENTE
+// ---------------------------------------------------------------------
+function PortalPermissionsModal({ patient, db, setDB, update, onClose }: any) {
+  const [perms, setPerms] = useState<Record<string, boolean>>(() =>
+    getEffectivePortalPermissions(patient, db)
+  );
+
+  const permissionIcons: Record<string, any> = {
+    comparativo: TrendingUp,
+    avaliacoes: FileText,
+    exames: Clock,
+    fotos: Camera,
+    tratamento: Pill,
+    protocolo: CreditCard,
+  };
+
+  function togglePerm(key: string) {
+    setPerms((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function setAll(val: boolean) {
+    const next: Record<string, boolean> = {};
+    PORTAL_PERMISSION_OPTIONS.forEach((opt) => {
+      next[opt.key] = val;
+    });
+    setPerms(next);
+  }
+
+  function handleSave() {
+    if (db && setDB) {
+      const updatedPatients = (db.patients || []).map((pt: any) =>
+        pt.id === patient.id ? { ...pt, portalPermissions: perms } : pt
+      );
+      const updatedProtocols = (db.protocols || []).map((pr: any) =>
+        pr.patientId === patient.id ? { ...pr, visibleInPortal: Boolean(perms.protocolo) } : pr
+      );
+      setDB({ ...db, patients: updatedPatients, protocols: updatedProtocols });
+    } else if (update) {
+      update({ ...patient, portalPermissions: perms });
+    }
+    onClose();
+  }
+
+  const enabledCount = PORTAL_PERMISSION_OPTIONS.filter((o) => Boolean(perms[o.key])).length;
+
+  return (
+    <div className="modal" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="card" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <h2>Permissões de visualização no portal</h2>
+            <p className="mute" style={{ margin: "2px 0 0", fontSize: 13 }}>
+              Controle o que <b>{patient.name}</b> pode visualizar ao entrar no Portal do Paciente.
+            </p>
+          </div>
+          <button type="button" className="btn sm" onClick={onClose} aria-label="Fechar">
+            ✕
+          </button>
+        </div>
+
+        <div
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "var(--soft)",
+            border: "1px solid var(--line)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 10,
+            marginBottom: 14,
+          }}
+        >
+          <div style={{ fontSize: 12.5 }}>
+            <b>Painel completo</b> fica sempre visível como tela inicial ·{" "}
+            <span className="num"><b>{enabledCount}</b> de <b>{PORTAL_PERMISSION_OPTIONS.length}</b> abas liberadas</span>
+          </div>
+          <div className="row" style={{ gap: 6 }}>
+            <button type="button" className="btn sm" onClick={() => setAll(true)}>
+              Liberar todas
+            </button>
+            <button type="button" className="btn sm" onClick={() => setAll(false)}>
+              Ocultar todas
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          {PORTAL_PERMISSION_OPTIONS.map((opt) => {
+            const Icon = permissionIcons[opt.key] || Activity;
+            const enabled = Boolean(perms[opt.key]);
+            return (
+              <div
+                key={opt.key}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: `1.5px solid ${enabled ? "var(--good)" : "var(--line)"}`,
+                  background: enabled ? "var(--goodbg)" : "var(--soft)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: enabled ? "var(--good)" : "var(--card)",
+                      color: enabled ? "#fff" : "var(--mute)",
+                      border: enabled ? "none" : "1px solid var(--line)",
+                      display: "grid",
+                      placeItems: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Icon size={17} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <b style={{ fontSize: 14 }}>{opt.label}</b>
+                      <span
+                        className={`chip ${enabled ? "good" : "bad"}`}
+                        style={{ fontSize: 11, padding: "2px 8px" }}
+                      >
+                        {enabled ? "Liberado" : "Oculto"}
+                      </span>
+                    </div>
+                    <div className="mute" style={{ fontSize: 12, marginTop: 2 }}>
+                      {opt.desc}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className={`btn sm ${enabled ? "" : "gold"}`}
+                  onClick={() => togglePerm(opt.key)}
+                  style={{ flexShrink: 0, fontWeight: 700 }}
+                >
+                  {enabled ? (
+                    <>
+                      <EyeOff size={13} /> Desativar
+                    </>
+                  ) : (
+                    <>
+                      <Eye size={13} /> Ativar
+                    </>
+                  )}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 18, gap: 10 }}>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" className="btn gold" onClick={handleSave}>
+            <Check size={15} />
+            Salvar permissões
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// MODAL: EDIÇÃO DE INDICADORES CORPORAIS & AVALIAÇÕES DO PACIENTE
+// ---------------------------------------------------------------------
+function EvaluationEditModal({ patient, initialMode = "edit", initialEvalId, update, onClose }: any) {
+  const evList = sorted(patient.evaluations || []);
+  const defaultTargetId =
+    initialMode === "create"
+      ? "__new__"
+      : initialEvalId && evList.some((e: any) => e.id === initialEvalId)
+      ? initialEvalId
+      : evList[evList.length - 1]?.id || "__new__";
+
+  const [selectedId, setSelectedId] = useState<string>(defaultTargetId);
+  const [height, setHeight] = useState(patient.height ? String(patient.height).replace(".", ",") : "");
+  const [date, setDate] = useState(today());
+  const [weight, setWeight] = useState("");
+  const [fatPct, setFatPct] = useState("");
+  const [fatKg, setFatKg] = useState("");
+  const [leanKg, setLeanKg] = useState("");
+  const [muscleKg, setMuscleKg] = useState("");
+  const [musclePct, setMusclePct] = useState("");
+  const [residual, setResidual] = useState("");
+  const [visceral, setVisceral] = useState("");
+  const [note, setNote] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (selectedId === "__new__") {
+      setDate(today());
+      setWeight("");
+      setFatPct("");
+      setFatKg("");
+      setLeanKg("");
+      setMuscleKg("");
+      setMusclePct("");
+      setResidual("");
+      setVisceral("");
+      setNote("");
+      return;
+    }
+    const target = evList.find((e: any) => e.id === selectedId);
+    if (target) {
+      setDate(target.date || today());
+      setWeight(target.weight !== null && target.weight !== undefined ? String(target.weight).replace(".", ",") : "");
+      setFatPct(target.fatPct !== null && target.fatPct !== undefined ? String(target.fatPct).replace(".", ",") : "");
+      setFatKg(target.fatKg !== null && target.fatKg !== undefined ? String(target.fatKg).replace(".", ",") : "");
+      setLeanKg(target.leanKg !== null && target.leanKg !== undefined ? String(target.leanKg).replace(".", ",") : "");
+      setMuscleKg(target.muscleKg !== null && target.muscleKg !== undefined ? String(target.muscleKg).replace(".", ",") : "");
+      setMusclePct(target.musclePct !== null && target.musclePct !== undefined ? String(target.musclePct).replace(".", ",") : "");
+      setResidual(target.residual !== null && target.residual !== undefined ? String(target.residual).replace(".", ",") : "");
+      setVisceral(target.visceral !== null && target.visceral !== undefined ? String(target.visceral).replace(".", ",") : "");
+      setNote(target.note || "");
+    }
+  }, [selectedId]);
+
+  function recalcFromPct() {
+    const w = num(weight.replace(",", "."));
+    const fp = num(fatPct.replace(",", "."));
+    if (w !== null && fp !== null) {
+      const fk = +(w * fp / 100).toFixed(1);
+      const lk = +(w - fk).toFixed(1);
+      setFatKg(String(fk).replace(".", ","));
+      setLeanKg(String(lk).replace(".", ","));
+    }
+  }
+
+  function handleSave() {
+    setErr("");
+    const wVal = num(weight.replace(",", "."));
+    if (wVal === null) return setErr("Informe o peso (kg) para salvar a avaliação.");
+
+    const hVal = num(height.replace(",", "."));
+    const fpVal = num(fatPct.replace(",", "."));
+    let fkVal = num(fatKg.replace(",", "."));
+    if (fkVal === null && fpVal !== null) fkVal = +(wVal * fpVal / 100).toFixed(1);
+    let lkVal = num(leanKg.replace(",", "."));
+    if (lkVal === null && fkVal !== null) lkVal = +(wVal - fkVal).toFixed(1);
+
+    const payload = {
+      id: selectedId === "__new__" ? uid() : selectedId,
+      date: date || today(),
+      weight: wVal,
+      fatPct: fpVal,
+      fatKg: fkVal,
+      leanKg: lkVal,
+      muscleKg: num(muscleKg.replace(",", ".")),
+      musclePct: num(musclePct.replace(",", ".")),
+      residual: num(residual.replace(",", ".")),
+      visceral: num(visceral.replace(",", ".")),
+      note: note.trim(),
+    };
+
+    const nextEvaluations =
+      selectedId === "__new__"
+        ? [...(patient.evaluations || []), payload]
+        : (patient.evaluations || []).map((e: any) => (e.id === selectedId ? { ...e, ...payload } : e));
+
+    update({
+      ...patient,
+      height: hVal !== null ? hVal : patient.height,
+      evaluations: nextEvaluations,
+    });
+    onClose();
+  }
+
+  function handleDelete() {
+    if (selectedId === "__new__") return;
+    if (!confirm("Remover esta avaliação do histórico do paciente?")) return;
+    update({
+      ...patient,
+      evaluations: (patient.evaluations || []).filter((e: any) => e.id !== selectedId),
+    });
+    onClose();
+  }
+
+  const previewW = num(weight.replace(",", "."));
+  const previewH = num(height.replace(",", "."));
+  const previewImc = previewW && previewH ? previewW / (previewH * previewH) : null;
+
+  return (
+    <div className="modal" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="card" style={{ maxWidth: 660 }} onClick={(e) => e.stopPropagation()}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <h2>Editar indicadores e bioimpedância</h2>
+            <p className="mute" style={{ margin: "2px 0 0", fontSize: 13 }}>
+              Alterar os dados abaixo atualiza automaticamente peso, variações, gráficos, IMC e comparativo de <b>{patient.name}</b>.
+            </p>
+          </div>
+          <button type="button" className="btn sm" onClick={onClose} aria-label="Fechar">
+            ✕
+          </button>
+        </div>
+
+        {/* Seletor da Avaliação (Inicial, intermediárias, Atual ou Nova) */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", marginBottom: 6 }}>Selecione qual avaliação deseja editar</label>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {evList.map((e: any, idx: number) => {
+              const label =
+                idx === 0
+                  ? `Inicial (${fdate(e.date)})`
+                  : idx === evList.length - 1
+                  ? `Atual (${fdate(e.date)})`
+                  : `${idx + 1}ª (${fdate(e.date)})`;
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  className={`btn sm num ${selectedId === e.id ? "gold" : ""}`}
+                  onClick={() => setSelectedId(e.id)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              className={`btn sm ${selectedId === "__new__" ? "gold" : ""}`}
+              onClick={() => setSelectedId("__new__")}
+            >
+              <Plus size={13} />
+              Nova avaliação
+            </button>
+          </div>
+        </div>
+
+        <div className="form">
+          <div>
+            <label>Data da avaliação</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label>Peso (kg) *</label>
+            <input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Ex.: 104,5" />
+          </div>
+          <div>
+            <label>Altura do paciente (m)</label>
+            <input value={height} onChange={(e) => setHeight(e.target.value)} placeholder="Ex.: 1,86" />
+          </div>
+          <div>
+            <label>% de gordura</label>
+            <input value={fatPct} onChange={(e) => setFatPct(e.target.value)} placeholder="Ex.: 37,1" />
+          </div>
+          <div>
+            <label>Massa de gordura (kg)</label>
+            <input value={fatKg} onChange={(e) => setFatKg(e.target.value)} placeholder="Ex.: 38,8" />
+          </div>
+          <div>
+            <label>Massa magra (kg)</label>
+            <input value={leanKg} onChange={(e) => setLeanKg(e.target.value)} placeholder="Ex.: 65,7" />
+          </div>
+          <div>
+            <label>Massa muscular (kg)</label>
+            <input value={muscleKg} onChange={(e) => setMuscleKg(e.target.value)} placeholder="Ex.: 29,9" />
+          </div>
+          <div>
+            <label>Gordura visceral (pts)</label>
+            <input value={visceral} onChange={(e) => setVisceral(e.target.value)} placeholder="Ex.: 13" />
+          </div>
+          <div>
+            <label>% de massa muscular</label>
+            <input value={musclePct} onChange={(e) => setMusclePct(e.target.value)} placeholder="Opcional" />
+          </div>
+          <div>
+            <label>Massa residual (kg)</label>
+            <input value={residual} onChange={(e) => setResidual(e.target.value)} placeholder="Opcional" />
+          </div>
+          <div style={{ gridColumn: "1/-1" }}>
+            <label>Observações da avaliação</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Condições de hidratação, retorno..." />
+          </div>
+        </div>
+
+        <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
+          <button type="button" className="btn sm" onClick={recalcFromPct}>
+            Recalcular massa de gordura e massa magra pelo %
+          </button>
+          {previewImc && (
+            <span className="chip neu num">
+              IMC calculado: <b>{fmt(previewImc, 1)} kg/m²</b> ({bmiClass(previewImc)})
+            </span>
+          )}
+        </div>
+
+        {err && <div style={{ color: "var(--bad)", marginTop: 10, fontWeight: 600 }}>{err}</div>}
+
+        <div className="row" style={{ justifyContent: "space-between", marginTop: 18, gap: 10 }}>
+          {selectedId !== "__new__" ? (
+            <button type="button" className="btn sm danger" onClick={handleDelete}>
+              <Trash2 size={14} />
+              Excluir avaliação
+            </button>
+          ) : (
+            <div />
+          )}
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" className="btn" onClick={onClose}>
+              Cancelar
+            </button>
+            <button type="button" className="btn gold" onClick={handleSave}>
+              <Check size={15} />
+              {selectedId === "__new__" ? "Adicionar avaliação" : "Salvar alterações"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// MODAL: EDIÇÃO CLÍNICA RÁPIDA (MEDICAÇÃO, RESTRIÇÃO, CONDUTAS)
+// ---------------------------------------------------------------------
+function TreatmentClinicalModal({ patient, update, onClose }: any) {
+  const [goal, setGoal] = useState(patient.goal || "");
+  const [medication, setMedication] = useState(patient.medication || "");
+  const [restriction, setRestriction] = useState(patient.restriction || "");
+  const [injury, setInjury] = useState(patient.injury || "");
+  const [notes, setNotes] = useState(patient.notes || "");
+  const [meds, setMeds] = useState<any[]>(() => sorted(patient.meds || []).reverse());
+  const [newDate, setNewDate] = useState(today());
+  const [newText, setNewText] = useState("");
+
+  function handleAddTimeline() {
+    if (!newText.trim()) return;
+    setMeds([{ id: uid(), date: newDate || today(), text: newText.trim() }, ...meds]);
+    setNewText("");
+  }
+
+  function handleSave() {
+    update({
+      ...patient,
+      goal: goal.trim(),
+      medication: medication.trim(),
+      restriction: restriction.trim(),
+      injury: injury.trim(),
+      notes: notes.trim(),
+      meds,
+    });
+    onClose();
+  }
+
+  return (
+    <div className="modal" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="card" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
+          <div>
+            <h2>Tratamento e informações clínicas</h2>
+            <p className="mute" style={{ margin: "2px 0 0", fontSize: 13 }}>
+              Edite medicações, restrições, observações e registros de conduta de <b>{patient.name}</b>.
+            </p>
+          </div>
+          <button type="button" className="btn sm" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        <div className="form">
+          <div style={{ gridColumn: "1/-1" }}>
+            <label>Objetivo clínico</label>
+            <input value={goal} onChange={(e) => setGoal(e.target.value)} />
+          </div>
+          <div style={{ gridColumn: "1/-1" }}>
+            <label>Medicação principal (exibida no cabeçalho)</label>
+            <input value={medication} onChange={(e) => setMedication(e.target.value)} placeholder="Ex.: Metformina 500mg, Ômega 3" />
+          </div>
+          <div>
+            <label>Restrição alimentar</label>
+            <input value={restriction} onChange={(e) => setRestriction(e.target.value)} />
+          </div>
+          <div>
+            <label>Lesão / limitação física</label>
+            <input value={injury} onChange={(e) => setInjury(e.target.value)} />
+          </div>
+          <div style={{ gridColumn: "1/-1" }}>
+            <label>Observações clínicas</label>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+          <h3 style={{ fontSize: 16, marginBottom: 10 }}>Registros da linha do tempo</h3>
+          <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <input
+              type="date"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              style={{ width: 145 }}
+            />
+            <input
+              value={newText}
+              onChange={(e) => setNewText(e.target.value)}
+              placeholder="Nova prescrição ou conduta..."
+              style={{ flex: 1, minWidth: 180 }}
+            />
+            <button type="button" className="btn sm gold" onClick={handleAddTimeline}>
+              <Plus size={13} /> Adicionar
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gap: 8, maxHeight: 210, overflowY: "auto" }}>
+            {meds.map((m) => (
+              <div key={m.id} className="row" style={{ gap: 8 }}>
+                <input
+                  type="date"
+                  value={m.date}
+                  onChange={(e) =>
+                    setMeds(meds.map((x) => (x.id === m.id ? { ...x, date: e.target.value } : x)))
+                  }
+                  style={{ width: 140, padding: "6px 8px", fontSize: 12.5 }}
+                />
+                <input
+                  value={m.text}
+                  onChange={(e) =>
+                    setMeds(meds.map((x) => (x.id === m.id ? { ...x, text: e.target.value } : x)))
+                  }
+                  style={{ flex: 1, padding: "6px 10px", fontSize: 13 }}
+                />
+                <button
+                  type="button"
+                  className="btn sm danger"
+                  onClick={() => setMeds(meds.filter((x) => x.id !== m.id))}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {!meds.length && <p className="mute" style={{ margin: 0, fontSize: 12.5 }}>Nenhum registro na linha do tempo.</p>}
+          </div>
+        </div>
+
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 18, gap: 10 }}>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" className="btn gold" onClick={handleSave}>
+            <Check size={15} />
             Salvar alterações
           </button>
         </div>
@@ -4795,62 +8009,373 @@ function PatientsListScreen({ db, onOpenPatient, onOpenCreate }: any) {
 }
 
 // ---------------------------------------------------------------------
-// 9. VISÃO DO PACIENTE (READ-ONLY)
+// 9. VISÃO DO PACIENTE (READ-ONLY COM MENU LATERAL & SUPORTE MOBILE)
 // ---------------------------------------------------------------------
-function PatientPortalView({ patient, appointments, onLogout, theme, setTheme }: any) {
+function PatientPortalView({ patient, db, setDB, appointments, onLogout, theme, setTheme }: any) {
+  const [activeTab, setActiveTab] = useState("painel");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const perms = getEffectivePortalPermissions(patient, db);
+
+  useEffect(() => {
+    if (activeTab !== "painel" && !(perms as any)[activeTab]) {
+      setActiveTab("painel");
+    }
+  }, [activeTab, perms.comparativo, perms.avaliacoes, perms.exames, perms.fotos, perms.tratamento, perms.protocolo]);
+
+  const allNavItems = [
+    { key: "painel", label: "Painel completo", icon: Activity, short: "Painel" },
+    { key: "comparativo", label: "Comparativo de avaliações", icon: TrendingUp, short: "Comparativo" },
+    { key: "avaliacoes", label: "Avaliações", icon: FileText, short: "Avaliações" },
+    { key: "exames", label: "Exames", icon: Clock, short: "Exames" },
+    { key: "fotos", label: "Fotos", icon: Camera, short: "Fotos" },
+    { key: "tratamento", label: "Tratamento", icon: Pill, short: "Tratamento" },
+    { key: "protocolo", label: "Meu Protocolo", icon: CreditCard, short: "Protocolo" },
+  ];
+
+  const navItems = allNavItems.filter(
+    (item) => item.key === "painel" || Boolean((perms as any)[item.key])
+  );
+
   return (
-    <div>
-      <header
-        style={{
-          padding: "16px 24px",
-          background: "var(--card)",
-          borderBottom: "1px solid var(--line)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div className="row" style={{ gap: 12 }}>
+    <div className="app-container patient-portal-container">
+      {/* 1. MENU LATERAL DESKTOP (FIXO À ESQUERDA, 236px) */}
+      <aside className="sidebar patient-sidebar-desktop">
+        {/* Topo do Menu: Logo Crest + Dr. Douglas Mota / Endocrinologia */}
+        <div className="sidebar-header">
           <img
             src="/assets/aistudio/dr_douglas_mota_header_crest.jpg"
             alt="DM"
-            style={{ width: 40, height: 40, borderRadius: 10, objectFit: "cover", border: "1px solid var(--line)" }}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              objectFit: "cover",
+              border: "1px solid var(--line)",
+              flexShrink: 0,
+            }}
           />
-          <div>
-            <b style={{ fontSize: 18, fontFamily: "'Cormorant Garamond', Georgia, serif" }}>Dr. Douglas Mota</b>
-            <div style={{ color: "var(--gold)", fontSize: 10, letterSpacing: "0.08em", fontWeight: 700 }}>
-              ENDOCRINOLOGIA E METABOLOGIA
+          <div style={{ minWidth: 0 }}>
+            <b style={{ fontSize: 16, display: "block", lineHeight: 1.15, fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+              Dr. Douglas Mota
+            </b>
+            <small
+              style={{
+                color: "var(--gold)",
+                fontSize: 9.5,
+                letterSpacing: "0.08em",
+                fontWeight: 700,
+                textTransform: "uppercase",
+              }}
+            >
+              ENDOCRINOLOGIA
+            </small>
+          </div>
+        </div>
+
+        {/* Card do Paciente Logado no topo da Sidebar */}
+        <div
+          style={{
+            padding: "12px 14px",
+            margin: "12px 10px 4px",
+            background: "var(--soft)",
+            borderRadius: 12,
+            border: "1px solid var(--line)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, var(--gold2), var(--gold))",
+              color: "#fff",
+              display: "grid",
+              placeItems: "center",
+              fontWeight: 700,
+              fontSize: 13,
+              fontFamily: "'Cormorant Garamond', Georgia, serif",
+              flexShrink: 0,
+            }}
+          >
+            {initials(patient.name)}
+          </div>
+          <div style={{ minWidth: 0, overflow: "hidden" }}>
+            <div style={{ fontSize: 10, color: "var(--gold)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Área do Paciente
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {patient.name}
             </div>
           </div>
         </div>
 
-        <div className="row" style={{ gap: 10 }}>
+        {/* Itens do Menu com Ícones */}
+        <nav className="sidebar-nav">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={`nav-btn ${isActive ? "active" : ""}`}
+                onClick={() => setActiveTab(item.key)}
+              >
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Rodapé da Sidebar: Modo de Tema e Sair */}
+        <div className="sidebar-footer">
+          <button
+            type="button"
+            className="nav-btn"
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            style={{ fontSize: 13 }}
+          >
+            {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+            <span>{theme === "light" ? "Modo escuro" : "Modo claro"}</span>
+          </button>
+
+          <button
+            type="button"
+            className="nav-btn"
+            onClick={onLogout}
+            style={{ fontSize: 13, color: "var(--bad)" }}
+          >
+            <LogOut size={16} />
+            <span>Sair do portal</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* 2. ÁREA PRINCIPAL DO PORTAL */}
+      <div className="main-area">
+        {/* HEADER MOBILE (APENAS DISPOSITIVOS MÓVEIS / TELAS MENORES) */}
+        <header className="mobile-patient-bar">
           <button
             type="button"
             className="btn sm"
-            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-            aria-label="Alternar tema"
+            onClick={() => setMobileMenuOpen(true)}
+            style={{ padding: "6px 10px", gap: 6 }}
+            aria-label="Abrir menu"
           >
-            {theme === "light" ? <Moon size={15} /> : <Sun size={15} />}
+            <Menu size={18} />
+            <span style={{ fontSize: 12.5, fontWeight: 700 }}>Menu</span>
           </button>
-          <button type="button" className="btn sm" onClick={onLogout}>
-            <LogOut size={15} />
-            Sair
-          </button>
-        </div>
-      </header>
 
-      <main className="content-wrap">
-        <p className="mute" style={{ margin: "0 0 16px" }}>
-          Olá, <b>{patient.name}</b>! Acompanhe a evolução do seu tratamento e composição corporal.
-        </p>
+          <div className="row" style={{ gap: 8 }}>
+            <img
+              src="/assets/aistudio/dr_douglas_mota_header_crest.jpg"
+              alt="DM"
+              style={{ width: 32, height: 32, borderRadius: 8, objectFit: "cover", border: "1px solid var(--line)" }}
+            />
+            <div style={{ textAlign: "left" }}>
+              <b style={{ fontSize: 14, display: "block", lineHeight: 1.15, fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+                Dr. Douglas Mota
+              </b>
+              <small style={{ color: "var(--gold)", fontSize: 8.5, letterSpacing: "0.06em", fontWeight: 700 }}>
+                PORTAL DO PACIENTE
+              </small>
+            </div>
+          </div>
 
-        {/* Painel do paciente estritamente em modo de leitura (isReadOnly: true) */}
-        <PatientRecord p={patient} db={{ appointments }} isReadOnly={true} />
-      </main>
+          <div className="row" style={{ gap: 6 }}>
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+              style={{ padding: "6px 8px" }}
+              aria-label="Alternar tema"
+            >
+              {theme === "light" ? <Moon size={14} /> : <Sun size={14} />}
+            </button>
+            <button
+              type="button"
+              className="btn sm danger"
+              onClick={onLogout}
+              style={{ padding: "6px 8px" }}
+              aria-label="Sair"
+            >
+              <LogOut size={14} />
+            </button>
+          </div>
+        </header>
+
+        {/* BARRA HORIZONTAL RÁPIDA MOBILE (ATALHOS TOUCH DIRETO NO TOPO) */}
+        <nav className="mobile-quick-nav" aria-label="Navegação rápida">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={`mobile-quick-chip ${isActive ? "active" : ""}`}
+                onClick={() => setActiveTab(item.key)}
+              >
+                <Icon size={13} />
+                <span>{item.short}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* DRAWER LATERAL MOBILE (SLIDE-OVER QUANDO CLICA NO MENU) */}
+        {mobileMenuOpen && (
+          <>
+            <div
+              className="mobile-drawer-backdrop"
+              onClick={() => setMobileMenuOpen(false)}
+              aria-hidden="true"
+            />
+            <aside className="mobile-drawer" role="dialog" aria-modal="true">
+              {/* Cabeçalho do Drawer com botão Fechar */}
+              <div className="sidebar-header" style={{ justifyContent: "space-between" }}>
+                <div className="row" style={{ gap: 10 }}>
+                  <img
+                    src="/assets/aistudio/dr_douglas_mota_header_crest.jpg"
+                    alt="DM"
+                    style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", border: "1px solid var(--line)" }}
+                  />
+                  <div>
+                    <b style={{ fontSize: 15, display: "block", lineHeight: 1.15, fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+                      Dr. Douglas Mota
+                    </b>
+                    <small style={{ color: "var(--gold)", fontSize: 8.5, letterSpacing: "0.06em", fontWeight: 700 }}>
+                      PORTAL DO PACIENTE
+                    </small>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn sm"
+                  onClick={() => setMobileMenuOpen(false)}
+                  style={{ border: "none", padding: 6 }}
+                  aria-label="Fechar menu"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Identificação do paciente no Drawer */}
+              <div
+                style={{
+                  padding: "10px 14px",
+                  margin: "12px 10px 4px",
+                  background: "var(--soft)",
+                  borderRadius: 12,
+                  border: "1px solid var(--line)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    background: "linear-gradient(135deg, var(--gold2), var(--gold))",
+                    color: "#fff",
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    fontFamily: "'Cormorant Garamond', Georgia, serif",
+                    flexShrink: 0,
+                  }}
+                >
+                  {initials(patient.name)}
+                </div>
+                <div style={{ minWidth: 0, overflow: "hidden" }}>
+                  <div style={{ fontSize: 10, color: "var(--gold)", fontWeight: 700, textTransform: "uppercase" }}>
+                    Acesso do Paciente
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {patient.name}
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista vertical de opções */}
+              <nav className="sidebar-nav" style={{ overflowY: "auto" }}>
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className={`nav-btn ${isActive ? "active" : ""}`}
+                      onClick={() => {
+                        setActiveTab(item.key);
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      <Icon size={18} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+
+              {/* Rodapé do Drawer */}
+              <div className="sidebar-footer">
+                <button
+                  type="button"
+                  className="nav-btn"
+                  onClick={() => {
+                    setTheme(theme === "light" ? "dark" : "light");
+                  }}
+                  style={{ fontSize: 13 }}
+                >
+                  {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+                  <span>{theme === "light" ? "Modo escuro" : "Modo claro"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="nav-btn"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onLogout();
+                  }}
+                  style={{ fontSize: 13, color: "var(--bad)" }}
+                >
+                  <LogOut size={16} />
+                  <span>Sair do portal</span>
+                </button>
+              </div>
+            </aside>
+          </>
+        )}
+
+        {/* CONTEÚDO PRINCIPAL DA ABA SELECIONADA */}
+        <main className="content-wrap">
+          <p className="mute" style={{ margin: "0 0 16px" }}>
+            Olá, <b>{patient.name}</b>! Acompanhe a evolução do seu tratamento e composição corporal.
+          </p>
+
+          {/* Ficha completa do paciente sincronizada com a aba ativa lateral */}
+          <PatientRecord
+            p={patient}
+            db={db}
+            setDB={setDB}
+            isReadOnly={true}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            hideTopTabs={true}
+          />
+        </main>
+      </div>
     </div>
   );
 }
@@ -4869,7 +8394,8 @@ export default function App() {
     }
   });
 
-  const [activeTab, setActiveTab] = useState<"inicio" | "pacientes" | "agenda" | "cadastro" | "sistema">("inicio");
+  const [activeTab, setActiveTab] = useState<"inicio" | "pacientes" | "agenda" | "financas" | "cadastro" | "sistema">("inicio");
+  const [patientActiveSubtab, setPatientActiveSubtab] = useState<string>("painel");
   const [openPatientId, setOpenPatientId] = useState<string | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -4937,6 +8463,8 @@ export default function App() {
         activePatient ? (
           <PatientPortalView
             patient={activePatient}
+            db={db}
+            setDB={setDB}
             appointments={db.appointments || []}
             onLogout={handleLogout}
             theme={theme}
@@ -5024,6 +8552,18 @@ export default function App() {
                 <CalendarIcon size={18} />
                 <span>Agenda</span>
                 {todayAppsCount > 0 && <span className="nav-badge num">{todayAppsCount} hoje</span>}
+              </button>
+
+              <button
+                type="button"
+                className={`nav-btn ${activeTab === "financas" && !openPatientId ? "active" : ""}`}
+                onClick={() => {
+                  setOpenPatientId(null);
+                  setActiveTab("financas");
+                }}
+              >
+                <CreditCard size={18} />
+                <span>Finanças</span>
               </button>
 
               <button
@@ -5136,6 +8676,7 @@ export default function App() {
                   key={activePatient.id}
                   p={activePatient}
                   db={db}
+                  setDB={setDB}
                   update={(np: any) =>
                     setDB({ ...db, patients: db.patients.map((x: any) => (x.id === np.id ? np : x)) })
                   }
@@ -5146,6 +8687,8 @@ export default function App() {
                   back={() => setOpenPatientId(null)}
                   onOpenBookingModal={setBookingModal}
                   isReadOnly={false}
+                  activeTab={patientActiveSubtab}
+                  onTabChange={setPatientActiveSubtab}
                 />
               ) : activeTab === "inicio" ? (
                 /* Aba Início */
@@ -5155,6 +8698,7 @@ export default function App() {
                   onOpenPatient={(id: string) => {
                     setSelectedPatientId(id);
                     setOpenPatientId(null);
+                    setPatientActiveSubtab("painel");
                     setActiveTab("pacientes");
                   }}
                   onOpenBookingModal={setBookingModal}
@@ -5205,6 +8749,7 @@ export default function App() {
                       key={activePatient.id}
                       p={activePatient}
                       db={db}
+                      setDB={setDB}
                       update={(np: any) =>
                         setDB({ ...db, patients: db.patients.map((x: any) => (x.id === np.id ? np : x)) })
                       }
@@ -5215,6 +8760,8 @@ export default function App() {
                       }}
                       onOpenBookingModal={setBookingModal}
                       isReadOnly={false}
+                      activeTab={patientActiveSubtab}
+                      onTabChange={setPatientActiveSubtab}
                     />
                   ) : (
                     <p className="mute">Nenhum paciente cadastrado.</p>
@@ -5226,6 +8773,18 @@ export default function App() {
                   db={db}
                   setDB={setDB}
                   onOpenBookingModal={setBookingModal}
+                />
+              ) : activeTab === "financas" ? (
+                /* Aba Finanças & Protocolos */
+                <FinancasScreen
+                  db={db}
+                  setDB={setDB}
+                  onOpenPatient={(id: string, subtab = "protocolo") => {
+                    setSelectedPatientId(id);
+                    setOpenPatientId(null);
+                    setPatientActiveSubtab(subtab);
+                    setActiveTab("pacientes");
+                  }}
                 />
               ) : activeTab === "cadastro" ? (
                 /* Aba Cadastro (Tela própria) */

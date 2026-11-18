@@ -4,7 +4,6 @@ import path from 'path';
 import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
-  const port = Number(process.env.PORT) || 3000;
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -13,14 +12,14 @@ export default defineConfig(() => {
       },
     },
     server: {
-      port,
+      port: 3000,
       host: '0.0.0.0',
       allowedHosts: true as const,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     preview: {
-      port,
+      port: 3000,
       host: '0.0.0.0',
       allowedHosts: true as const,
     },
